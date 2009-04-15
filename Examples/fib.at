@@ -1,0 +1,8 @@
+int fib(int n):
+    if n < 2:
+        n
+    else:
+        (fib(n - 2)) + fib(n - 1) -- Bug: Shouldn't need parens around that first expression.
+
+dump(fib(25)) -- "dump" outputs a value of any type.
+              -- It's the equivalent of print(show(x)).
