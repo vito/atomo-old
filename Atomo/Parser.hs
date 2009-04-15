@@ -93,6 +93,8 @@ float      = P.float atomo
 charLit    = P.charLiteral atomo
 natural    = P.natural atomo
 symbol     = P.symbol atomo
+stringLiteral = P.stringLiteral atomo
+charLiteral = P.charLiteral atomo
 
 
 -- String to an AList of AChars
@@ -106,23 +108,21 @@ getIndent = do pos <- getPosition
 
 
 aExpr :: Parser AtomoVal
-aExpr = do e <- try aVar
-            <|> try aPrimCall
-            <|> try aCall
-            <|> try aFunc
-            <|> try aData
-            <|> try aIf
-            <|> try aAssign
-            <|> try aPrimInfix
-            <|> aList
-            <|> aHash
-            <|> try aTuple
-            <|> aNumber
-            <|> aString
-            <|> aChar
-            <|> aReference
-           {- optional newline -}
-           return e
+aExpr = try aVar
+    <|> try aFunc
+    <|> try aPrimInfix -- Has to be before aCall/aPrimCall
+    <|> try aPrimCall
+    <|> try aCall
+    <|> try aData
+    <|> try aIf
+    <|> try aAssign
+    <|> aList
+    <|> aHash
+    <|> try aTuple
+    <|> aNumber
+    <|> aString
+    <|> aChar
+    <|> aReference
 
 
 -- Reference (variable lookup)
@@ -260,18 +260,14 @@ aNumber = liftM (AInt . read) $ (many1 digit <?> "number")
 
 -- Parse a string
 aString :: Parser AtomoVal
-aString = do char '"'
-             val <- many (noneOf "\"")
-             char '"'
-             return (toAString val)
+aString = do string <- stringLiteral
+             return (toAString string)
           <?> "string"
 
 -- Parse a single character
 aChar :: Parser AtomoVal
-aChar = do char '\''
-           val <- noneOf "'"
-           char '\''
-           return (AChar val)
+aChar = do char <- charLiteral
+           return (AChar char)
         <?> "character"
 
 -- Parameters to a function call
@@ -335,12 +331,9 @@ aPrimInfix = do val <- buildExpressionParser table targets
                              inequalityFunc a b = ACall (APrimFunc $ fromJust (lookup "/=" primFuncs)) [a, b]
                              lessFunc a b = ACall (APrimFunc $ fromJust (lookup "<" primFuncs)) [a, b]
 
-                 targets = do val <- parens aExpr
-                                 <|> try aVar
+                 targets = do val <- try aVar
                                  <|> try aPrimCall
                                  <|> try aCall
-                                 <|> try aFunc
-                                 <|> try aData
                                  <|> try aIf
                                  <|> try aAssign
                                  <|> aList
@@ -350,6 +343,7 @@ aPrimInfix = do val <- buildExpressionParser table targets
                                  <|> aString
                                  <|> aChar
                                  <|> aReference
+                                 <|> parens aExpr
                               whiteSpace
                               return val
 
