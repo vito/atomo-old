@@ -114,6 +114,7 @@ aExpr = do e <- try aVar
             <|> try aIf
             <|> try aAssign
             <|> try aPrimInfix
+            <|> aList
             <|> aNumber
             <|> aString
             <|> aChar
@@ -223,6 +224,13 @@ aAssign = do names <- commaSep1 identifier
              return $ AAssign (head names) val -- TODO: Multiple assignment
           <?> "variable reassignment"
 
+-- Parse a list
+aList :: Parser AtomoVal
+aList = do char '['
+           contents <- commaSep aExpr
+           char ']'
+           return $ AList contents
+
 -- Parse a number
 aNumber :: Parser AtomoVal
 aNumber = liftM (AInt . read) $ (many1 digit <?> "number")
@@ -312,6 +320,7 @@ aPrimInfix = do val <- buildExpressionParser table targets
                                  <|> try aData
                                  <|> try aIf
                                  <|> try aAssign
+                                 <|> aList
                                  <|> aNumber
                                  <|> aString
                                  <|> aChar
