@@ -1,0 +1,259 @@
+--
+-- Atomo example/mockup syntax
+-- 
+-- This code doesn't do anything yet.
+-- It's the initial mockup.
+-- A lot of it is plain silly.
+-- The most interesting and solid example is probably
+-- the "Boolean stuff" below.
+--
+-- A few things in here I'm also considering not implementing,
+-- for the sake of simplicity. These include:
+--     Guards
+--     "where:" syntax
+--
+
+module: Prelude -- Prelude module, loaded by default.
+
+
+-- Primitive types
+-- "data" creates a completely new type
+data int: ... | -2 | -1 | 0 | 1 | 2 |...
+data char: 'a' | 'b' | 'c' | ...
+data [a]: [] | a : [a]
+
+
+-- A string is just a list of characters
+type string: [char] -- "type" generates an "alias type" that can be
+                    -- represented with existing types
+
+-- Boolean stuff
+data bool: true | false
+data yesno deriving (Eq, Show): yes | no -- Example of derivation
+
+infix 3: and -- Specify "and" as an infix function (e.g. `True and True`) with a precedence of 3
+bool and(bool (true), bool (true)): true
+bool and(bool (_), bool (_)): false
+
+infix 2: or -- "or" has lower precedence than "and"
+bool or(bool (true), bool (_)): true
+bool or(bool (_), bool b): b
+
+prefix not -- prefix function, e.g. `not False`
+bool not(bool (true)): false
+bool not(bool (false)): true
+
+
+-- Eq typeclass, for determining if two things are equatable
+class Eq(a):
+    infix 4: ==, /=
+
+    bool ==(a, a)
+    bool /=(a, a)
+
+    -- Minimal complete definition: == or /=
+    bool ==(a x, a y):
+        not (x /= y)
+    
+    bool /=(a x, a y):
+        not (x == y)
+
+class Eq => bool:
+    bool ==(bool (true), bool (true)): true
+    bool ==(bool (false), bool (false)): true
+    bool ==(bool (_), bool (_)): true
+
+
+-- Show typeclass, for representing data as a string or outputting it
+class Show(a):
+    string show(a)
+    void dump(a)
+
+    string show(a x):
+        "Cannot convert `%s` to string." % x._type_
+
+    void dump(a x):
+        print(show(x))
+
+class Show => bool:
+    string show(bool (true)): "true"
+    string show(bool (false)): "false"
+
+
+-- Classes can be created for primitive types to turn them into objects when constructed.
+class char:
+    -- A lot of this is actually primitive so it's impossible to write.
+    char upper():
+        chr (self.ord() + 32)
+
+    int ord():
+        -- errr..okay, how about int!
+
+
+class int: -- Ideally this would actually be a subclass of a more generic Numeric (type?)class
+    bool even?():
+        self.rem(2) == 0
+
+    bool odd?():
+        not self.even?()
+
+    int remainder(int div):
+        _, r = self.quotRem(div)
+        r
+
+    int quot(int div):
+        q, r = self.quotRem(div)
+        q
+
+    int quotRem(int div)
+        -- Primitive
+
+
+class [a]:
+    int length() | self == []: 0 -- Guards
+    otherwise:
+        1 + xs.length()
+    where:
+        (_:xs) = self
+
+    [b] map(b f(a)):
+        f(x) : xs.map(f)
+    where:
+        (x:xs) = self
+
+    [a] reverse() | self == []: self
+    otherwise:
+        xs.reverse() + [x]
+    where:
+        (x:xs) = self
+
+    [a] concat() | xs == []: x
+        otherwise:
+            x + xs.concat()
+    where:
+        (x:xs) = self
+
+    bool isPrefixOf([a] xs):
+        for i in [0..self.length() + 1]:
+            if self[i] /= xs[i]:
+               return false
+
+        true
+
+    -- Pulled this out of my ass.
+    [a] replace([a] needle, [a] withi, limit = 0):
+        replace'([], self)
+    where:
+        [a] replace'(accum, left) | left == []: accum
+        otherwise:
+            if needle.isPrefixOf(left):
+                if limit == 0:
+                    accum + with + left.drop(needle.length())
+                else:
+                    replace'(accum + with, left.drop(needle.length()))
+            else:
+                replace'(accum + [x], xs)
+        where:
+            (x:xs) = left
+
+
+class [a] -> [int]:
+    -- Summation. Specific to numbers, so we use our own class.
+    int sum():
+        if xs == []:
+            x
+        else:
+            x + xs.concat()
+    where:
+        (x:xs) = self
+
+    -- Possible alternative?:
+    int sum() | xs == []: x
+    otherwise:
+        x + xs.concat()
+    where:
+        (x:xs) = self
+
+
+class [a] -> string: -- More special than just a list
+    string upcase():
+        self.map(do (c): c.upper()) -- Example of a Lambda
+
+    string downcase():
+        self.map(do (c): c.lower())
+
+    string capitalize():
+        (x:xs) = self
+        x.upper() : xs
+
+    infix 4: %
+    string %(tuple with):
+        string target = self
+
+        with.each(do (with):
+            if with.is(string):
+                target = target.replace("%s", with)
+            elif with.is(numeric):
+                target = target.replace("%d", with.show())
+        )
+
+        target
+
+
+-- Function composition?
+-- Looks funny, but that function:
+--     - Takes one function of type a -> b,
+--     - takes another function of type b -> c,
+--     - and returns a function of type a -> c
+--
+-- Usage:
+--     (fizz . buzz . baz) "hi"
+-- Which expands to:
+--     fizz(buzz(baz("hi")))
+infix 9: .
+(c f(a)) .(c f(b), b g(a)):
+    f(g(x))
+
+
+-- Obligatorty fibonacci implementation
+int fib(int n) | n <= 1: n
+otherwise:
+    fib(n - 2) + fib(n - 1)
+
+-- Alternatively written as:
+int fib2(int n):
+    if n <= 1:
+        n
+    else:
+        fib2(n - 2) + fib2(n - 1)
+
+
+-- Examples of variables:
+double pi = 3.1415926589793
+string hello = "Hello, world!"
+[char] hello_you_masochist = ['H', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '!']
+bool hellos_equal = hello == hello_you_masochist
+char eich = 'h'
+int total = sum [1..10]
+
+
+-- A class:
+class Person:
+    """
+    A Person class.
+    """
+    string name
+    int age
+
+    Person new(string name, int age):
+        self.name, self.age = name, age
+
+    void eat(string food):
+        print("Success! "+ self.name +" ate "+ food +"!")
+        -- Alternative:
+        print("Success! %s ate %s!" % (self.name, food))
+
+
+alex = Person.new("Alex Suraci", 17)
+alex.eat("Godzilla")
+

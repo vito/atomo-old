@@ -1,0 +1,53 @@
+       d8888 888                                   
+      d88888 888                                   
+     d88P888 888                                   
+    d88P 888 888888 .d88b.  88888b.d88b.   .d88b.  
+   d88P  888 888   d88""88b 888 "888 "88b d88""88b 
+  d88P   888 888   888  888 888  888  888 888  888 
+ d8888888888 Y88b. Y88..88P 888  888  888 Y88..88P 
+d88P     888  "Y888 "Y88P"  888  888  888  "Y88P"  
+
+
+Atomo is a programming language written in Haskell and will
+eventually target LLVM.
+
+For now it is entirely interpreted, but it seems to work pretty
+well.
+
+Unique aspects:
+    - Object-oriented
+    - Statically-typed
+    - Functions can be defined as prefix or infix on-the-fly
+    - A very strong and robust type system heavily
+      influenced by Haskell. And by influenced I mean I
+      ganked it. :) There have been changes to make it fit
+      into an OO style, however.
+    - Strings are just lists of characters.
+    - Python-esque syntax
+    - Pattern matching
+    - Modular
+    - And lastly, fast.
+
+My goal with Atomo is to fill the void between the speed of Java
+and the prettiness of Python, with many things heavily influenced
+(or, ahem, stolen from) Haskell. I'm making a language I'd want to
+code in.
+
+Atomo is designed with flexibility and conciseness in mind. It has a
+lot of aspects often seen in functional programming languages, like
+pattern matching, a strong and consistent type system, defining
+infix functions, static typing, etc.
+
+To learn more, just take a peep at the example file, "example.at"
+
+"But Alex, dynamic typing is all the rage! Why? WHY?!"
+
+Because there are already too many good ones. Writing another
+dynamic, object-oriented language doesn't really make any headway
+unless it's pretty dang unique. I also prefer static typing for its
+tendency towards bug prevention, and it often acts as a form of
+self-documentation.
+
+Also, yes, I used an ASCII generator for the "logo" up top.
+
+I'm not that l33t.
