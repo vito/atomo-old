@@ -33,6 +33,8 @@ eval e val@(APrimFunc _)     = return val
 eval e val@(AIOFunc _)       = return val
 eval e val@(AFunction n _ _) = setGlobal e n val
 eval e val@(AList _)         = return val
+eval e val@(ATuple _)        = return val
+eval e val@(AHash _)         = return val
 eval e val@(AString _)       = return val
 eval e (AVariable s)         = getAny e s
 eval e (ADefine s v)         = eval e v >>= setLocal e s

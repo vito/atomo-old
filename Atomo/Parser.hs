@@ -115,6 +115,8 @@ aExpr = do e <- try aVar
             <|> try aAssign
             <|> try aPrimInfix
             <|> aList
+            <|> aHash
+            <|> try aTuple
             <|> aNumber
             <|> aString
             <|> aChar
@@ -224,12 +226,33 @@ aAssign = do names <- commaSep1 identifier
              return $ AAssign (head names) val -- TODO: Multiple assignment
           <?> "variable reassignment"
 
--- Parse a list
+-- Parse a list (mutable list of values of one type)
 aList :: Parser AtomoVal
 aList = do char '['
            contents <- commaSep aExpr
            char ']'
            return $ AList contents
+
+-- Parse a tuple (immutable list of values of any type)
+aTuple :: Parser AtomoVal
+aTuple = do char '('
+            contents <- commaSep (aType >> aExpr)
+            char ')'
+            return $ ATuple contents
+
+-- Parse a hash (mutable, named contents of any type)
+aHash :: Parser AtomoVal
+aHash = do char '{'
+           whiteSpace
+           contents <- commaSep (do name <- identifier
+                                    colon
+                                    whiteSpace
+                                    aType
+                                    contents <- aExpr
+                                    return (name, contents))
+           whiteSpace
+           char '}'
+           return $ AHash contents
 
 -- Parse a number
 aNumber :: Parser AtomoVal
@@ -321,6 +344,8 @@ aPrimInfix = do val <- buildExpressionParser table targets
                                  <|> try aIf
                                  <|> try aAssign
                                  <|> aList
+                                 <|> aTuple
+                                 <|> aHash
                                  <|> aNumber
                                  <|> aString
                                  <|> aChar

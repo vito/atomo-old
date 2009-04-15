@@ -12,6 +12,8 @@ data AtomoVal = AInt Integer
               | AFloat Float
               | ADouble Double
               | AList [AtomoVal]
+              | ATuple [AtomoVal]
+              | AHash [(String, AtomoVal)]
               | AVariable String
               | ADefine String AtomoVal
               | AAssign String AtomoVal
@@ -45,6 +47,8 @@ instance Show AtomoVal where
     show (ADouble double) = show double
     show (AList str@(AChar _:_)) = show $ AString $ AList str
     show (AList list)     = show list
+    show (AHash es)       = "{ " ++ (intercalate ", " (map (\(n, v) -> n ++ ": " ++ show v) es)) ++ " }"
+    show (ATuple vs)      = "(" ++ (intercalate ", " (map show vs)) ++ ")"
     show (AVariable n)    = n
     show (ADefine _ v)    = show v
     show (AAssign _ v)    = show v
