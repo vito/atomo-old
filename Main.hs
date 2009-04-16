@@ -16,10 +16,15 @@ primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 primIf e (AConstruct "true" _) b _ = eval e b
 primIf e _ _ f                     = eval e f -- Condition is false, evaluate "else" if any
 
+patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
+patternMatch s ps as = do throwError $ Default (show ps)
+                          return ()
+
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
 apply e (APrimFunc f) as = liftThrows $ f as
 apply e (AIOFunc f) as   = f as
 apply e (AFunction _ ps b) as = do new <- liftIO $ nullScope
+                                   patternMatch new (map snd ps) as
                                    let env = (globalScope e, new)
                                    mapM_ (\(n, v) -> setLocal env n v) (zip (map snd ps) as)
                                    eval env b
@@ -27,7 +32,6 @@ apply e (AFunction _ ps b) as = do new <- liftIO $ nullScope
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e val@(AInt _)          = return val
 eval e val@(AChar _)         = return val
-eval e val@(AFloat _)        = return val
 eval e val@(ADouble _)       = return val
 eval e val@(APrimFunc _)     = return val
 eval e val@(AIOFunc _)       = return val

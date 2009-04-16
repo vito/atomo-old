@@ -9,7 +9,6 @@ type IOThrowsError = ErrorT AtomoError IO
 
 data AtomoVal = AInt Integer
               | AChar Char
-              | AFloat Float
               | ADouble Double
               | AList [AtomoVal]
               | ATuple [AtomoVal]
@@ -32,7 +31,6 @@ data AtomoVal = AInt Integer
 instance Eq AtomoVal where
     (AInt a) == (AInt b) = a == b
     (AChar a) == (AChar b) = a == b
-    (AFloat a) == (AFloat b) = a == b
     (ADouble a) == (ADouble b) = a == b
     (AList a) == (AList b) = a == b
     (AString a) == (AString b) = a == b
@@ -43,7 +41,6 @@ instance Eq AtomoVal where
 instance Show AtomoVal where
     show (AInt int)       = show int
     show (AChar char)     = show char
-    show (AFloat float)   = show float
     show (ADouble double) = show double
     show (AList str@(AChar _:_)) = show $ AString $ AList str
     show (AList list)     = show list
@@ -60,12 +57,11 @@ instance Show AtomoVal where
     show s@(AString _)    = show $ fromAString s
     show (ABlock es)      = intercalate "\n" $ map show es
     show (AData s cs)     = s ++ " (Data): " ++ (intercalate " | " $ map fromAConstruct cs)
-    show (AConstruct s d) = s ++ " :: " ++ fromAData d
+    show (AConstruct s d) = s
     show ANone            = "None"
 
 fromAInt (AInt i) = i
 fromAChar (AChar c) = c
-fromAFloat (AFloat f) = f
 fromADouble (ADouble d) = d
 fromAVariable (AVariable n) = n
 fromAList (AList l) = l

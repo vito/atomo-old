@@ -119,6 +119,7 @@ aExpr = try aVar
     <|> aList
     <|> aHash
     <|> try aTuple
+    <|> try aDouble
     <|> aNumber
     <|> aString
     <|> aChar
@@ -141,10 +142,13 @@ aType = try (do identifier <|> brackets aType <|> parens aType
     <|> brackets aType
         <?> "type declaration"
 
+aPattern :: Parser String
+aPattern = parens (identifier <|> string "_")
+
 -- Variable declaration
 aDecl :: Parser (String, String)
 aDecl = do theType <- aType
-           name <- identifier
+           name <- identifier <|> aPattern
            return (theType, name)
         <?> "variable declaration"
 
@@ -256,7 +260,10 @@ aHash = do char '{'
 
 -- Parse a number
 aNumber :: Parser AtomoVal
-aNumber = liftM (AInt . read) $ (many1 digit <?> "number")
+aNumber = integer >>= return . AInt
+
+aDouble :: Parser AtomoVal
+aDouble = float >>= return . ADouble
 
 -- Parse a string
 aString :: Parser AtomoVal
@@ -339,6 +346,7 @@ aPrimInfix = do val <- buildExpressionParser table targets
                                  <|> aList
                                  <|> aTuple
                                  <|> aHash
+                                 <|> try aDouble
                                  <|> aNumber
                                  <|> aString
                                  <|> aChar
@@ -360,15 +368,18 @@ primFuncs = [ ("++", concatFunc)
             , ("show", showFunc)
             ]
             where
-                addFunc [a, b] = return $ AInt $ (+) (fromAInt a) (fromAInt b)
-                subFunc [a, b] = return $ AInt $ (-) (fromAInt a) (fromAInt b)
-                mulFunc [a, b] = return $ AInt $ (*) (fromAInt a) (fromAInt b)
-                divFunc [a, b] = return $ AInt $ div (fromAInt a) (fromAInt b)
+                addFunc [AInt a, AInt b] = return $ AInt $ a + b
+                addFunc [ADouble a, ADouble b] = return $ ADouble $ a + b
+                subFunc [AInt a, AInt b] = return $ AInt $ a - b
+                subFunc [ADouble a, ADouble b] = return $ ADouble $ a - b
+                mulFunc [AInt a, AInt b] = return $ AInt $ a * b
+                mulFunc [ADouble a, ADouble b] = return $ ADouble $ a * b
+                divFunc [AInt a, AInt b] = return $ AInt $ a `div` b
+                divFunc [ADouble a, ADouble b] = return $ ADouble $ a / b
                 showFunc [a] = return $ toAString $ show a
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
                 equalityFunc [(AInt a), (AInt b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AChar a), (AChar b)] = return $ boolToPrim (a == b)
-                equalityFunc [(AFloat a), (AFloat b)] = return $ boolToPrim (a == b)
                 equalityFunc [(ADouble a), (ADouble b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AList a), (AList b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AString a), (AString b)] = return $ boolToPrim (a == b)
