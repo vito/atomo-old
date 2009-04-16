@@ -52,7 +52,11 @@ eval e (ADefine t s v)       = do val <- eval e v
                                   if getType val == t
                                      then setLocal e s val
                                      else throwError $ TypeMismatch t (getType val)
-eval e (AAssign s v)         = eval e v >>= setLocal e s
+eval e (AAssign s v)         = do val <- eval e v
+                                  orig <- getAny e s
+                                  if getType val == getType orig
+                                     then setLocal e s val
+                                     else throwError $ TypeMismatch (getType orig) (getType val)
 eval e (ACall f as)          = do fun <- eval e f
                                   args <- mapM (eval e) as
                                   apply e fun args
