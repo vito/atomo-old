@@ -103,4 +103,8 @@ getType (AHash _) = "hash"
 getType (AString _) = "[char]"
 getType (AConstruct _ t) = getType t
 getType (AData n _) = n
+getType (AFunc t _ as _) = t ++ " f(" ++ intercalate ", " (map fst as) ++ ")"
 getType v = show v
+
+getReturnType (AFunc t _ _ _) = t
+getReturnType a = getType a

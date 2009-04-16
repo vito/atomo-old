@@ -22,14 +22,17 @@ patternMatch s ps as = return ()
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
 apply e (APrimFunc f) as = liftThrows $ f as
 apply e (AIOFunc f) as   = f as
-apply e (AFunc _ _ ps b) as = do new <- liftIO $ nullScope
+apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
                                  let env = (globalScope e, new)
-                                 {- mapM_ (\(n, v) -> setLocal env n v) (zip (map snd ps) as) -}
                                  setLocals env ps as
-                                 eval env b
+                                 res <- eval env b
+                                 if getType res /= t
+                                    then throwError $ TypeMismatch t (getType res)
+                                    else return res
                               where setLocals _ [] [] = return ()
                                     setLocals _ (x:_) [] = throwError $ NumArgs (length ps) (length as)
+                                    setLocals _ [] (a:_) = throwError $ NumArgs (length ps) (length as)
                                     setLocals e (x:xs) (a:as) | getType a /= (fst x) = throwError $ TypeMismatch (fst x) (getType a)
                                                               | otherwise = setLocal e (snd x) a >> setLocals e xs as
 
