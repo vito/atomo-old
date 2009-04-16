@@ -25,8 +25,13 @@ apply e (AIOFunc f) as   = f as
 apply e (AFunc _ _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
                                  let env = (globalScope e, new)
-                                 mapM_ (\(n, v) -> setLocal env n v) (zip (map snd ps) as)
+                                 {- mapM_ (\(n, v) -> setLocal env n v) (zip (map snd ps) as) -}
+                                 setLocals env ps as
                                  eval env b
+                              where setLocals _ [] [] = return ()
+                                    setLocals _ (x:_) [] = throwError $ NumArgs (length ps) (length as)
+                                    setLocals e (x:xs) (a:as) | getType a /= (fst x) = throwError $ TypeMismatch (fst x) (getType a)
+                                                              | otherwise = setLocal e (snd x) a >> setLocals e xs as
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e val@(AInt _)          = return val

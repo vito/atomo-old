@@ -72,7 +72,7 @@ fromAString (AList l) = map fromAChar (fromAList (AList l))
 fromAConstruct (AConstruct s _) = s
 fromAData (AData s _) = s
 
-data AtomoError = NumArgs Integer [AtomoVal]
+data AtomoError = NumArgs Int Int
                 | ImmutableVar String
                 | TypeMismatch Type Type
                 | NotFunction String String
@@ -82,7 +82,7 @@ data AtomoError = NumArgs Integer [AtomoVal]
 
 
 instance Show AtomoError where
-    show (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found " ++ (show . length) found
+    show (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found " ++ show found
     show (ImmutableVar var)            = "Cannot reassign immutable reference `" ++ var ++ "`"
     show (TypeMismatch expected found) = "Invalid type; expected " ++ expected ++ ", found " ++ found
     show (NotFunction message func)    = message ++ ": " ++ func
