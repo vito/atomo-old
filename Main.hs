@@ -17,17 +17,16 @@ primIf e (AConstruct "true" _) b _ = eval e b
 primIf e _ _ f                     = eval e f -- Condition is false, evaluate "else" if any
 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
-patternMatch s ps as = do throwError $ Default (show ps)
-                          return ()
+patternMatch s ps as = return ()
 
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
 apply e (APrimFunc f) as = liftThrows $ f as
 apply e (AIOFunc f) as   = f as
-apply e (AFunction _ ps b) as = do new <- liftIO $ nullScope
-                                   patternMatch new (map snd ps) as
-                                   let env = (globalScope e, new)
-                                   mapM_ (\(n, v) -> setLocal env n v) (zip (map snd ps) as)
-                                   eval env b
+apply e (AFunc _ _ ps b) as = do new <- liftIO $ nullScope
+                                 patternMatch new (map snd ps) as
+                                 let env = (globalScope e, new)
+                                 mapM_ (\(n, v) -> setLocal env n v) (zip (map snd ps) as)
+                                 eval env b
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e val@(AInt _)          = return val
@@ -35,13 +34,16 @@ eval e val@(AChar _)         = return val
 eval e val@(ADouble _)       = return val
 eval e val@(APrimFunc _)     = return val
 eval e val@(AIOFunc _)       = return val
-eval e val@(AFunction n _ _) = setGlobal e n val
+eval e val@(AFunc _ n _ _)   = setGlobal e n val
 eval e val@(AList _)         = return val
 eval e val@(ATuple _)        = return val
 eval e val@(AHash _)         = return val
 eval e val@(AString _)       = return val
 eval e (AVariable s)         = getAny e s
-eval e (ADefine s v)         = eval e v >>= setLocal e s
+eval e (ADefine t s v)       = do val <- eval e v
+                                  if getType val == t
+                                     then setLocal e s val
+                                     else throwError $ TypeMismatch t (getType val)
 eval e (AAssign s v)         = eval e v >>= setLocal e s
 eval e (ACall f as)          = do fun <- eval e f
                                   args <- mapM (eval e) as

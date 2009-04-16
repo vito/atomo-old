@@ -134,35 +134,35 @@ aReference = do name <- identifier
 
 -- Type
 aType :: Parser String
-aType = try (do identifier <|> brackets aType <|> parens aType
+aType = try (do identifier <|> brackets aType
                 name <- identifier
-                parens letter
+                parens (commaSep identifier)
                 return name)
     <|> identifier
     <|> brackets aType
         <?> "type declaration"
 
-aPattern :: Parser String
+aPattern :: Parser String -- TODO: Finish this
 aPattern = parens (identifier <|> string "_")
 
 -- Variable declaration
-aDecl :: Parser (String, String)
+aDecl :: Parser (Type, String)
 aDecl = do theType <- aType
            name <- identifier <|> aPattern
            return (theType, name)
         <?> "variable declaration"
 
 -- Function arguments
-aArgs :: Parser [(String, String)]
+aArgs :: Parser [(Type, String)]
 aArgs = commaSep aDecl
         <?> "function arguments"
 
 -- Function header
 aFuncHeader :: Parser (AtomoVal -> AtomoVal)
-aFuncHeader = do aType
+aFuncHeader = do theType <- aType
                  funcName <- identifier <|> operator
                  args <- parens (aArgs)
-                 return $ AFunction funcName args
+                 return $ AFunc theType funcName args
               <?> "function header"
 
 -- Block
@@ -215,11 +215,11 @@ aIf = do reserved "if"
 
 -- Variable assignment
 aVar :: Parser AtomoVal
-aVar = do theType <- identifier
+aVar = do theType <- aType
           names <- commaSep1 identifier
           reservedOp "="
           val <- aExpr
-          return $ ADefine (head names) val -- TODO: Multiple assignment
+          return $ ADefine theType (head names) val -- TODO: Multiple assignment
        <?> "variable"
 
 -- Variable reassignment
@@ -366,6 +366,7 @@ primFuncs = [ ("++", concatFunc)
             , ("/", divFunc)
             , ("<", lessFunc) -- WE NEED MORE FUNK
             , ("show", showFunc)
+            , ("type", typeFunc)
             ]
             where
                 addFunc [AInt a, AInt b] = return $ AInt $ a + b
@@ -384,11 +385,12 @@ primFuncs = [ ("++", concatFunc)
                 equalityFunc [(AList a), (AList b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AString a), (AString b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AVariable a), (AVariable b)] = return $ boolToPrim (a == b)
-                equalityFunc [(ADefine _ a), (ADefine _ b)] = return $ boolToPrim (a == b)
+                equalityFunc [(ADefine _ _ a), (ADefine _ _ b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AAssign _ a), (AAssign _ b)] = return $ boolToPrim (a == b)
                 equalityFunc _ = return $ primFalse
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
                 lessFunc [a, b] = return $ boolToPrim $ (<) (fromAInt a) (fromAInt b)
+                typeFunc [a] = return $ toAString $ getType a
 
 -- Primitive I/O functions
 ioPrims :: [(String, [AtomoVal] -> IOThrowsError AtomoVal)]

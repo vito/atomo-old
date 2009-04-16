@@ -4,6 +4,7 @@ import Control.Monad.Error
 import Data.List (intercalate)
 import Text.Parsec (ParseError)
 
+type Type = String
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
@@ -14,12 +15,12 @@ data AtomoVal = AInt Integer
               | ATuple [AtomoVal]
               | AHash [(String, AtomoVal)]
               | AVariable String
-              | ADefine String AtomoVal
+              | ADefine Type String AtomoVal
               | AAssign String AtomoVal
               | AObject String [AtomoVal]
               | APrimFunc ([AtomoVal] -> ThrowsError AtomoVal)
               | AIOFunc ([AtomoVal] -> IOThrowsError AtomoVal)
-              | AFunction String [(String, String)] AtomoVal
+              | AFunc Type String [(Type, String)] AtomoVal
               | ACall AtomoVal [AtomoVal]
               | AString AtomoVal -- AString == AList of AChars
               | ABlock [AtomoVal]
@@ -35,7 +36,7 @@ instance Eq AtomoVal where
     (AList a) == (AList b) = a == b
     (AString a) == (AString b) = a == b
     (AVariable a) == (AVariable b) = a == b
-    (ADefine _ a) == (ADefine _ b) = a == b
+    (ADefine _ _ a) == (ADefine _ _ b) = a == b
     (AAssign _ a) == (AAssign _ b) = a == b
 
 instance Show AtomoVal where
@@ -47,12 +48,12 @@ instance Show AtomoVal where
     show (AHash es)       = "{ " ++ (intercalate ", " (map (\(n, v) -> n ++ ": " ++ show v) es)) ++ " }"
     show (ATuple vs)      = "(" ++ (intercalate ", " (map show vs)) ++ ")"
     show (AVariable n)    = n
-    show (ADefine _ v)    = show v
+    show (ADefine _ _ v)    = show v
     show (AAssign _ v)    = show v
     show (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map show vs)
     show (APrimFunc _)    = "<Function Primitive>"
     show (AIOFunc _)      = "<IO Primitive>"
-    show (AFunction n _ _)= n ++ " (Function)"
+    show (AFunc t n _ _)  = n ++ " (Function)"
     show (ACall f as)     = show f ++ ": " ++ (intercalate ", " $ map show as)
     show s@(AString _)    = show $ fromAString s
     show (ABlock es)      = intercalate "\n" $ map show es
@@ -73,7 +74,7 @@ fromAData (AData s _) = s
 
 data AtomoError = NumArgs Integer [AtomoVal]
                 | ImmutableVar String
-                | TypeMismatch String AtomoVal
+                | TypeMismatch Type Type
                 | NotFunction String String
                 | UnboundVar String String
                 | Parser ParseError
@@ -83,7 +84,7 @@ data AtomoError = NumArgs Integer [AtomoVal]
 instance Show AtomoError where
     show (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found " ++ (show . length) found
     show (ImmutableVar var)            = "Cannot reassign immutable reference `" ++ var ++ "`"
-    show (TypeMismatch expected found) = "Invalid type; expected " ++ expected ++ ", found " ++ show found
+    show (TypeMismatch expected found) = "Invalid type; expected " ++ expected ++ ", found " ++ found
     show (NotFunction message func)    = message ++ ": " ++ func
     show (UnboundVar message var)      = message ++ ": " ++ var
     show (Parser err)                  = "Parse error at " ++ show err
@@ -93,3 +94,13 @@ instance Error AtomoError where
     noMsg = Default "An error has occurred"
     strMsg = Default
 
+getType :: AtomoVal -> Type
+getType (AInt _) = "int"
+getType (AChar _) = "char"
+getType (ADouble _) = "double"
+getType (ATuple _) = "tuple"
+getType (AHash _) = "hash"
+getType (AString _) = "[char]"
+getType (AConstruct _ t) = getType t
+getType (AData n _) = n
+getType v = show v
