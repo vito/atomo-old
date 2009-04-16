@@ -8,7 +8,7 @@ import Atomo.Internals
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
-import Data.List (nub)
+import Data.List (intercalate, nub)
 import Data.Maybe (fromJust)
 import Text.Parsec
 import Text.Parsec.Expr
@@ -134,12 +134,13 @@ aReference = do name <- identifier
 
 -- Type
 aType :: Parser String
-aType = try (do identifier <|> brackets aType
-                name <- identifier
-                parens (commaSep identifier)
-                return name)
+aType = try (do ret <- identifier
+                char 'f'
+                args <- parens (commaSep identifier)
+                return (ret ++ " f(" ++ intercalate ", " args ++ ")"))
     <|> identifier
     <|> brackets aType
+
         <?> "type declaration"
 
 aPattern :: Parser String -- TODO: Finish this

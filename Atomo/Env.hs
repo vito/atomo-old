@@ -65,10 +65,13 @@ setGlobal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
 setGlobal e s v = defineVal (globalScope e) s v
 
 getLocal :: Env -> String -> IOThrowsError AtomoVal
-getLocal e s = getVal (localScope e) s (throwError $ UnboundVar "Unknown variable" s)
+getLocal e s = getVal (localScope e) s (throwError $ UnboundVar "Unknown local variable" s)
 
 getGlobal :: Env -> String -> IOThrowsError AtomoVal
-getGlobal e s = getVal (globalScope e) s (throwError $ UnboundVar "Unknown variable" s)
+getGlobal e s = getVal (globalScope e) s (throwError $ UnboundVar "Unknown global variable" s)
 
 getAny :: Env -> String -> IOThrowsError AtomoVal
-getAny e s = getVal (globalScope e) s (getLocal e s)
+getAny e s = getVal (globalScope e) s (tryLocal)
+             where
+                 tryLocal = getVal (localScope e) s (error)
+                 error = throwError $ UnboundVar "Unknown local or global variable" s
