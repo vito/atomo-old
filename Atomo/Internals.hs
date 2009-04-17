@@ -94,6 +94,12 @@ instance Error AtomoError where
     noMsg = Default "An error has occurred"
     strMsg = Default
 
+verifyList :: [AtomoVal] -> Maybe Type
+verifyList (x:xs) = verifyList' (getType x) xs
+                    where verifyList' t [] = Nothing
+                          verifyList' t (x:xs) | getType x == t = verifyList' t xs
+                                               | otherwise = Just (getType x)
+
 getType :: AtomoVal -> Type
 getType (AInt _) = "int"
 getType (AChar _) = "char"
@@ -106,7 +112,7 @@ getType (AData n _) = n
 getType (AFunc t _ as _) = t ++ " f(" ++ intercalate ", " (map fst as) ++ ")"
 getType (AList []) = "[]"
 getType (AList as) = "[" ++ getType (head as) ++ "]"
-getType v = show v
+getType _ = "unknown"
 
 getReturnType (AFunc t _ _ _) = t
 getReturnType a = getType a

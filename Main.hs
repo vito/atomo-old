@@ -42,13 +42,15 @@ eval e val@(AChar _)         = return val
 eval e val@(ADouble _)       = return val
 eval e val@(APrimFunc _)     = return val
 eval e val@(AIOFunc _)       = return val
-eval e val@(AFunc _ n _ _)   = setGlobal e n val
-eval e val@(AList as)        = do ev <- mapM (eval e) as
-                                  return $ AList ev
 eval e val@(ATuple _)        = return val
 eval e val@(AHash _)         = return val
 eval e val@(AString _)       = return val
 eval e val@(AConstruct c d)  = return val
+eval e val@(AFunc _ n _ _)   = setGlobal e n val
+eval e (AList as)            = do list <- mapM (eval e) as
+                                  case verifyList list of
+                                       Nothing -> return $ AList list
+                                       Just mis -> throwError $ TypeMismatch (getType (head as)) mis
 eval e (AVariable s)         = getAny e s
 eval e (ADefine t s v)       = do val <- eval e v
                                   if getType val == t
