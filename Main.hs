@@ -43,10 +43,12 @@ eval e val@(ADouble _)       = return val
 eval e val@(APrimFunc _)     = return val
 eval e val@(AIOFunc _)       = return val
 eval e val@(AFunc _ n _ _)   = setGlobal e n val
-eval e val@(AList _)         = return val
+eval e val@(AList as)        = do ev <- mapM (eval e) as
+                                  return $ AList ev
 eval e val@(ATuple _)        = return val
 eval e val@(AHash _)         = return val
 eval e val@(AString _)       = return val
+eval e val@(AConstruct c d)  = return val
 eval e (AVariable s)         = getAny e s
 eval e (ADefine t s v)       = do val <- eval e v
                                   if getType val == t
@@ -62,7 +64,6 @@ eval e (ACall f as)          = do fun <- eval e f
                                   apply e fun args
 eval e (ABlock es)           = evalAll e es
 eval e (AData s cs)          = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
-eval e val@(AConstruct c d)  = return val
 eval e (AIf c b f)           = do cond <- eval e c
                                   primIf e cond b f
 eval e v                     = throwError $ Default $ "Can't evaluate: " ++ show v

@@ -10,6 +10,7 @@ import Control.Monad.Error
 import Control.Monad.Trans
 import Data.List (intercalate, nub)
 import Data.Maybe (fromJust)
+import Debug.Trace
 import Text.Parsec
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
@@ -139,7 +140,11 @@ aType = try (do ret <- identifier
                 args <- parens (commaSep identifier)
                 return (ret ++ " f(" ++ intercalate ", " args ++ ")"))
     <|> identifier
-    <|> brackets aType
+    <|> try (do open <- char '['
+                theType <- identifier
+                close <- char ']'
+                whiteSpace
+                return (open : theType ++ [close]))
 
         <?> "type declaration"
 

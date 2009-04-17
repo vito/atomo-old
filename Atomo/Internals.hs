@@ -1,3 +1,5 @@
+{-# LANGUAGE XGADTs #-}
+
 module Atomo.Internals where
 
 import Control.Monad.Error
@@ -47,8 +49,8 @@ instance Show AtomoVal where
     show (AList list)     = show list
     show (AHash es)       = "{ " ++ (intercalate ", " (map (\(n, v) -> n ++ ": " ++ show v) es)) ++ " }"
     show (ATuple vs)      = "(" ++ (intercalate ", " (map show vs)) ++ ")"
-    show (AVariable n)    = n
-    show (ADefine _ _ v)    = show v
+    show (AVariable n)    = "Variable: " ++ n
+    show (ADefine _ _ v)  = show v
     show (AAssign _ v)    = show v
     show (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map show vs)
     show (APrimFunc _)    = "<Function Primitive>"
@@ -104,6 +106,8 @@ getType (AString _) = "string" -- todo: make type aliases work
 getType (AConstruct _ t) = getType t
 getType (AData n _) = n
 getType (AFunc t _ as _) = t ++ " f(" ++ intercalate ", " (map fst as) ++ ")"
+getType (AList []) = "[]"
+getType (AList as) = "[" ++ getType (head as) ++ "]"
 getType v = show v
 
 getReturnType (AFunc t _ _ _) = t
