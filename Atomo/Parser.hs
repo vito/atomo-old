@@ -255,12 +255,12 @@ aTuple = do char '('
 aHash :: Parser AtomoVal
 aHash = do char '{'
            whiteSpace
-           contents <- commaSep (do name <- identifier
+           contents <- commaSep (do theType <- aType
+                                    name <- identifier
                                     colon
                                     whiteSpace
-                                    aType
-                                    contents <- aExpr
-                                    return (name, contents))
+                                    expr <- aExpr
+                                    return (name, (theType, expr)))
            whiteSpace
            char '}'
            return $ AHash contents

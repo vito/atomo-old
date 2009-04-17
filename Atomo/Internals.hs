@@ -13,7 +13,7 @@ data AtomoVal = AInt Integer
               | ADouble Double
               | AList [AtomoVal]
               | ATuple [(Type, AtomoVal)]
-              | AHash [(String, AtomoVal)]
+              | AHash [(String, (Type, AtomoVal))]
               | AVariable String
               | ADefine Type String AtomoVal
               | AAssign String AtomoVal
@@ -45,8 +45,10 @@ instance Show AtomoVal where
     show (ADouble double) = show double
     show (AList str@(AChar _:_)) = show $ AString $ AList str
     show (AList list)     = show list
-    show (AHash es)       = "{ " ++ (intercalate ", " (map (\(n, v) -> n ++ ": " ++ show v) es)) ++ " }"
-    show (ATuple vs)      = "(" ++ (intercalate ", " (map (\(t, v) -> t ++ " " ++ show v) vs)) ++ ")"
+    show (AHash es)       = "{ " ++ (intercalate ", " (map showValue es)) ++ " }"
+                            where showValue (n, (t, v)) = t ++ " " ++ n ++ ": " ++ show v
+    show (ATuple vs)      = "(" ++ (intercalate ", " (map showValue vs)) ++ ")"
+                            where showValue (t, v) = t ++ " " ++ show v
     show (AVariable n)    = "Variable: " ++ n
     show (ADefine _ _ v)  = show v
     show (AAssign _ v)    = show v
@@ -105,6 +107,11 @@ verifyTuple :: [(Type, AtomoVal)] -> Maybe (Type, Type)
 verifyTuple [] = Nothing
 verifyTuple ((t, v):vs) | t == getType v = verifyTuple vs
                         | otherwise = Just (t, getType v)
+
+verifyHash :: [(String, (Type, AtomoVal))] -> Maybe (Type, Type)
+verifyHash [] = Nothing
+verifyHash ((_, (t, v)):vs) | t == getType v = verifyHash vs
+                            | otherwise = Just (t, getType v)
 
 getType :: AtomoVal -> Type
 getType (AInt _) = "int"
