@@ -12,7 +12,7 @@ data AtomoVal = AInt Integer
               | AChar Char
               | ADouble Double
               | AList [AtomoVal]
-              | ATuple [AtomoVal]
+              | ATuple [(Type, AtomoVal)]
               | AHash [(String, AtomoVal)]
               | AVariable String
               | ADefine Type String AtomoVal
@@ -46,7 +46,7 @@ instance Show AtomoVal where
     show (AList str@(AChar _:_)) = show $ AString $ AList str
     show (AList list)     = show list
     show (AHash es)       = "{ " ++ (intercalate ", " (map (\(n, v) -> n ++ ": " ++ show v) es)) ++ " }"
-    show (ATuple vs)      = "(" ++ (intercalate ", " (map show vs)) ++ ")"
+    show (ATuple vs)      = "(" ++ (intercalate ", " (map (\(t, v) -> t ++ " " ++ show v) vs)) ++ ")"
     show (AVariable n)    = "Variable: " ++ n
     show (ADefine _ _ v)  = show v
     show (AAssign _ v)    = show v
@@ -94,11 +94,17 @@ instance Error AtomoError where
     noMsg = Default "An error has occurred"
     strMsg = Default
 
-verifyList :: [AtomoVal] -> Maybe Type
+verifyList :: [AtomoVal] -> Maybe (Type, Type)
+verifyList [] = Nothing
 verifyList (x:xs) = verifyList' (getType x) xs
                     where verifyList' t [] = Nothing
                           verifyList' t (x:xs) | getType x == t = verifyList' t xs
-                                               | otherwise = Just (getType x)
+                                               | otherwise = Just (t, getType x)
+
+verifyTuple :: [(Type, AtomoVal)] -> Maybe (Type, Type)
+verifyTuple [] = Nothing
+verifyTuple ((t, v):vs) | t == getType v = verifyTuple vs
+                        | otherwise = Just (t, getType v)
 
 getType :: AtomoVal -> Type
 getType (AInt _) = "int"

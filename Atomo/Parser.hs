@@ -245,7 +245,9 @@ aList = do char '['
 -- Parse a tuple (immutable list of values of any type)
 aTuple :: Parser AtomoVal
 aTuple = do char '('
-            contents <- commaSep (aType >> aExpr)
+            contents <- commaSep (do theType <- aType
+                                     expr <- aExpr
+                                     return (theType, expr))
             char ')'
             return $ ATuple contents
 
