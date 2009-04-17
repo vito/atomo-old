@@ -1,5 +1,3 @@
-{-# LANGUAGE XGADTs #-}
-
 module Atomo.Internals where
 
 import Control.Monad.Error
