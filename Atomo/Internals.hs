@@ -15,6 +15,8 @@ data AtomoVal = AInt Integer
               | ATuple [(Type, AtomoVal)]
               | AHash [(String, (Type, AtomoVal))]
               | AVariable String
+              | AClass String [(String, AtomoVal)] -- Name [(Attribute/Function Name, Value)]
+              | AAttribute (AtomoVal, String)
               | ADefine Type String AtomoVal
               | AAssign String AtomoVal
               | AObject String [AtomoVal]
