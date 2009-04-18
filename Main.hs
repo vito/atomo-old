@@ -1,5 +1,6 @@
 module Main where
 
+import Atomo.Compiler
 import Atomo.Env
 import Atomo.Error
 import Atomo.Internals

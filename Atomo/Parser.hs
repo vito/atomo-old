@@ -405,7 +405,7 @@ primFuncs = [ ("++", concatFunc)
                 mulFunc [ADouble a, ADouble b] = return $ ADouble $ a * b
                 divFunc [AInt a, AInt b] = return $ AInt $ a `div` b
                 divFunc [ADouble a, ADouble b] = return $ ADouble $ a / b
-                showFunc [a] = return $ toAString $ show a
+                showFunc [a] = return $ toAString $ pretty a
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
                 equalityFunc [(AInt a), (AInt b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AChar a), (AChar b)] = return $ boolToPrim (a == b)
