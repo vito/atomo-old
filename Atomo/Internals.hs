@@ -20,8 +20,8 @@ data AtomoVal = AInt Integer
               | ADefine Type String AtomoVal
               | AAssign String AtomoVal
               | AObject String [AtomoVal]
-              | APrimFunc ([AtomoVal] -> ThrowsError AtomoVal)
-              | AIOFunc ([AtomoVal] -> IOThrowsError AtomoVal)
+              | APrimFunc String ([AtomoVal] -> ThrowsError AtomoVal)
+              | AIOFunc String ([AtomoVal] -> IOThrowsError AtomoVal)
               | AFunc Type String [(Type, String)] AtomoVal
               | ACall AtomoVal [AtomoVal]
               | AString AtomoVal -- AString == AList of AChars
@@ -42,28 +42,25 @@ instance Eq AtomoVal where
     (AAssign _ a) == (AAssign _ b) = a == b
 
 instance Show AtomoVal where
-    show (AInt int)       = show int
-    show (AChar char)     = show char
-    show (ADouble double) = show double
-    show (AList str@(AChar _:_)) = show $ AString $ AList str
-    show (AList list)     = show list
-    show (AHash es)       = "{ " ++ (intercalate ", " (map showValue es)) ++ " }"
-                            where showValue (n, (t, v)) = t ++ " " ++ n ++ ": " ++ show v
-    show (ATuple vs)      = "(" ++ (intercalate ", " (map showValue vs)) ++ ")"
-                            where showValue (t, v) = t ++ " " ++ show v
-    show (AVariable n)    = "Variable: " ++ n
-    show (ADefine _ _ v)  = show v
-    show (AAssign _ v)    = show v
-    show (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map show vs)
-    show (APrimFunc _)    = "<Function Primitive>"
-    show (AIOFunc _)      = "<IO Primitive>"
-    show (AFunc t n _ _)  = n ++ " (Function)"
-    show (ACall f as)     = show f ++ ": " ++ (intercalate ", " $ map show as)
-    show s@(AString _)    = show $ fromAString s
-    show (ABlock es)      = intercalate "\n" $ map show es
-    show (AData s cs)     = s ++ " (Data): " ++ (intercalate " | " $ map fromAConstruct cs)
-    show (AConstruct s d) = s
-    show ANone            = "None"
+    show (AInt int)       = "AInt " ++ show int
+    show (AChar char)     = "AChar " ++ show char
+    show (ADouble double) = "ADouble " ++ show double
+    show (AList list)     = "AList " ++ show list
+    show (AHash es)       = "AHash " ++ show es
+    show (ATuple vs)      = "ATuple " ++ show vs
+    show (AVariable n)    = "AVariable " ++ show n
+    show (ADefine t n v)  = "ADefine " ++ show t ++ " " ++ show n ++ " (" ++ show v ++ ")"
+    show (AAssign n v)    = "AAssign " ++ show n ++ " (" ++ show v ++ ")"
+    show (AObject n vs)   = "AObject " ++ show n ++ " (" ++ show vs ++ ")"
+    show (APrimFunc n _)  = "APrimFunc " ++ show n ++ " (...)"
+    show (AIOFunc n _)    = "AIOFunc " ++ show n ++ " (...)"
+    show (AFunc t n p b)  = "AFunc " ++ show t ++ " " ++ show n ++ " " ++ show p ++ " (" ++ show b ++ ")"
+    show (ACall f as)     = "ACall (" ++ show f ++ ") " ++ show as
+    show (AString s)      = "AString " ++ show s
+    show (ABlock es)      = "ABlock (" ++ show es ++ ")"
+    show (AData s cs)     = "AData " ++ show s ++ " " ++ show cs
+    show (AConstruct s d) = "AConstruct " ++ show s ++ " " ++ show d
+    show ANone            = "ANone"
 
 fromAInt (AInt i) = i
 fromAChar (AChar c) = c
@@ -131,3 +128,27 @@ getType _ = "unknown"
 
 getReturnType (AFunc t _ _ _) = t
 getReturnType a = getType a
+
+pretty :: AtomoVal -> String
+pretty (AInt int)       = show int
+pretty (AChar char)     = show char
+pretty (ADouble double) = show double
+pretty (AList str@(AChar _:_)) = show $ AString $ AList str
+pretty (AList list)     = show list
+pretty (AHash es)       = "{ " ++ (intercalate ", " (map showValue es)) ++ " }"
+                            where showValue (n, (t, v)) = t ++ " " ++ n ++ ": " ++ show v
+pretty (ATuple vs)      = "(" ++ (intercalate ", " (map showValue vs)) ++ ")"
+                            where showValue (t, v) = t ++ " " ++ show v
+pretty (AVariable n)    = "Variable: " ++ n
+pretty (ADefine _ _ v)  = show v
+pretty (AAssign _ v)    = show v
+pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map show vs)
+pretty (APrimFunc n _)  = "<Function Primitive (" ++ n ++ ")>"
+pretty (AIOFunc n _)    = "<IO Primitive (" ++ n ++ ")>"
+pretty (AFunc t n _ _)  = n ++ " (Function)"
+pretty (ACall f as)     = show f ++ ": " ++ (intercalate ", " $ map show as)
+pretty s@(AString _)    = show $ fromAString s
+pretty (ABlock es)      = intercalate "\n" $ map show es
+pretty (AData s cs)     = s ++ " (Data): " ++ (intercalate " | " $ map fromAConstruct cs)
+pretty (AConstruct s d) = s
+pretty ANone            = "None"

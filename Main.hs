@@ -20,8 +20,8 @@ patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
 
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
-apply e (APrimFunc f) as = liftThrows $ f as
-apply e (AIOFunc f) as   = f as
+apply e (APrimFunc _ f) as = liftThrows $ f as
+apply e (AIOFunc _ f) as   = f as
 apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
                                  let env = (globalScope e, new)
@@ -40,8 +40,8 @@ eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e val@(AInt _)          = return val
 eval e val@(AChar _)         = return val
 eval e val@(ADouble _)       = return val
-eval e val@(APrimFunc _)     = return val
-eval e val@(AIOFunc _)       = return val
+eval e val@(APrimFunc _ _)   = return val
+eval e val@(AIOFunc _ _)     = return val
 eval e val@(AString _)       = return val
 eval e val@(AConstruct c d)  = return val
 eval e val@(AFunc _ n _ _)   = setGlobal e n val
@@ -113,8 +113,8 @@ main = do args <- getArgs
           case length args of
                0 -> do putStrLn "Atomo 0.0"
                        runInputT defaultSettings (repl env)
-               1 -> do let file = args !! 0
-                       source <- readFile file
+               1 -> do source <- readFile (args !! 0)
                        execute env source
-                       return ()
+               2 -> do source <- readFile (args !! 1)
+                       compile source
                otherwise -> putStrLn "`atomo` only takes 1 or 0 arguments."

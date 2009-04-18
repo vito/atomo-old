@@ -314,8 +314,8 @@ aPrimCall :: Parser AtomoVal
 aPrimCall = do name <- choice (map (string . fst) primFuncs) <|> choice (map (string . fst) ioPrims)
                params <- aParams
                case lookup name primFuncs of
-                  Just _ -> return $ ACall (APrimFunc (getPrim name)) params
-                  Nothing -> return $ ACall (AIOFunc (getIOPrim name)) params
+                  Just _ -> return $ ACall (APrimFunc name (getPrim name)) params
+                  Nothing -> return $ ACall (AIOFunc name (getIOPrim name)) params
             <?> "primitive call"
 
 
@@ -357,14 +357,14 @@ aPrimInfix = do val <- buildExpressionParser table targets
                          ]
                          where
                              op s f assoc = Infix ((reservedOp s >> return f) <?> "operator") assoc
-                             mulFunc a b = ACall (APrimFunc (getPrim "*")) [a, b]
-                             divFunc a b = ACall (APrimFunc (getPrim "/")) [a, b]
-                             addFunc a b = ACall (APrimFunc (getPrim "+")) [a, b]
-                             subFunc a b = ACall (APrimFunc (getPrim "-")) [a, b]
-                             concatFunc a b = ACall (APrimFunc (getPrim "++")) [a, b]
-                             equalityFunc a b = ACall (APrimFunc (getPrim "==")) [a, b]
-                             inequalityFunc a b = ACall (APrimFunc (getPrim "/=")) [a, b]
-                             lessFunc a b = ACall (APrimFunc (getPrim "<")) [a, b]
+                             mulFunc a b = ACall (APrimFunc "*" (getPrim "*")) [a, b]
+                             divFunc a b = ACall (APrimFunc "/" (getPrim "/")) [a, b]
+                             addFunc a b = ACall (APrimFunc "+" (getPrim "+")) [a, b]
+                             subFunc a b = ACall (APrimFunc "-" (getPrim "-")) [a, b]
+                             concatFunc a b = ACall (APrimFunc "++" (getPrim "++")) [a, b]
+                             equalityFunc a b = ACall (APrimFunc "==" (getPrim "==")) [a, b]
+                             inequalityFunc a b = ACall (APrimFunc "/=" (getPrim "/=")) [a, b]
+                             lessFunc a b = ACall (APrimFunc "<" (getPrim "<")) [a, b]
 
                  targets = do val <- parens aExpr
                                  <|> try aVar
@@ -427,7 +427,7 @@ ioPrims = [ ("print", printFunc)
           ]
           where
               printFunc xs = liftIO $ mapM_ (putStrLn . fromAString) xs >> return ANone
-              dumpFunc xs = liftIO $ mapM_ print xs >> return ANone
+              dumpFunc xs = liftIO $ mapM_ (putStrLn . pretty) xs >> return ANone
 
 getIOPrim :: String -> ([AtomoVal] -> IOThrowsError AtomoVal)
 getIOPrim = fromJust . (flip lookup ioPrims)
