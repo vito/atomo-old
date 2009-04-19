@@ -91,7 +91,7 @@ evalAndPrint :: Env -> String -> IO ()
 evalAndPrint e s = evalString e s >>= putStrLn
 
 evalString :: Env -> String -> IO String
-evalString e s = runIOThrows $ liftM show $ (liftThrows $ readExpr s) >>= eval e
+evalString e s = runIOThrows $ liftM pretty $ (liftThrows $ readExpr s) >>= eval e
 
 -- Execute a string
 execute :: Env -> String -> IO ()
