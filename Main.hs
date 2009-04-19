@@ -105,7 +105,23 @@ execute e s = do let parsed = readExprs s
 
 -- Dump an abstract syntax tree
 dumpAST :: String -> IO ()
-dumpAST s = print (extractValue (readExprs s))
+dumpAST s = dumpPretty ugly 0
+            where
+                dumpPretty [] _ = return ()
+                dumpPretty (c:cs) i | c `elem` "[(" = do putChar c
+                                                         putStrLn ""
+                                                         putStr (replicate ((i + 1) * 4) ' ')
+                                                         dumpPretty cs (i + 1)
+                                    | c `elem` "])" = do putStrLn ""
+                                                         putStr (replicate ((i - 1) * 4) ' ')
+                                                         putChar c
+                                                         dumpPretty cs (i - 1)
+                                    | c == ',' = do putStrLn [c]
+                                                    putStr (replicate (i * 4) ' ')
+                                                    dumpPretty cs i
+                                    | otherwise = do putChar c
+                                                     dumpPretty cs i
+                ugly = show (extractValue (readExprs s))
 
 -- The Read-Evaluate-Print Loop
 repl :: Env -> InputT IO ()
