@@ -107,7 +107,7 @@ execute e s = do let parsed = readExprs s
 dumpAST :: String -> IO ()
 dumpAST s = dumpPretty ugly 0
             where
-                dumpPretty [] _ = return ()
+                dumpPretty [] _ = putStrLn ""
                 dumpPretty (c:cs) i | c `elem` "[(" = do putChar c
                                                          putStrLn ""
                                                          putStr (replicate ((i + 1) * 4) ' ')
