@@ -20,8 +20,8 @@ data AtomoVal = AInt Integer
               | ADefine Type String AtomoVal
               | AAssign String AtomoVal
               | AObject String [AtomoVal]
-              | APrimFunc String ([AtomoVal] -> ThrowsError AtomoVal)
-              | AIOFunc String ([AtomoVal] -> IOThrowsError AtomoVal)
+              | APrimFunc String
+              | AIOFunc String
               | AFunc Type String [(Type, String)] AtomoVal
               | ACall AtomoVal [AtomoVal]
               | AString AtomoVal -- AString == AList of AChars
@@ -30,6 +30,7 @@ data AtomoVal = AInt Integer
               | AConstruct String AtomoVal
               | AIf AtomoVal AtomoVal AtomoVal
               | ANone
+              deriving (Show)
 
 instance Eq AtomoVal where
     (AInt a) == (AInt b) = a == b
@@ -40,27 +41,6 @@ instance Eq AtomoVal where
     (AVariable a) == (AVariable b) = a == b
     (ADefine _ _ a) == (ADefine _ _ b) = a == b
     (AAssign _ a) == (AAssign _ b) = a == b
-
-instance Show AtomoVal where
-    show (AInt int)       = "AInt " ++ show int
-    show (AChar char)     = "AChar " ++ show char
-    show (ADouble double) = "ADouble " ++ show double
-    show (AList list)     = "AList " ++ show list
-    show (AHash es)       = "AHash " ++ show es
-    show (ATuple vs)      = "ATuple " ++ show vs
-    show (AVariable n)    = "AVariable " ++ show n
-    show (ADefine t n v)  = "ADefine " ++ show t ++ " " ++ show n ++ " (" ++ show v ++ ")"
-    show (AAssign n v)    = "AAssign " ++ show n ++ " (" ++ show v ++ ")"
-    show (AObject n vs)   = "AObject " ++ show n ++ " (" ++ show vs ++ ")"
-    show (APrimFunc n _)  = "APrimFunc " ++ show n ++ " (...)"
-    show (AIOFunc n _)    = "AIOFunc " ++ show n ++ " (...)"
-    show (AFunc t n p b)  = "AFunc " ++ show t ++ " " ++ show n ++ " " ++ show p ++ " (" ++ show b ++ ")"
-    show (ACall f as)     = "ACall (" ++ show f ++ ") " ++ show as
-    show (AString s)      = "AString " ++ show s
-    show (ABlock es)      = "ABlock (" ++ show es ++ ")"
-    show (AData s cs)     = "AData " ++ show s ++ " (" ++ show cs ++ ")"
-    show (AConstruct s d) = "AConstruct " ++ show s ++ " (" ++ show d ++ ")"
-    show ANone            = "ANone"
 
 fromAInt (AInt i) = i
 fromAChar (AChar c) = c
@@ -143,8 +123,8 @@ pretty (AVariable n)    = "Variable: " ++ n
 pretty (ADefine _ _ v)  = pretty v
 pretty (AAssign _ v)    = pretty v
 pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
-pretty (APrimFunc n _)  = "<Function Primitive (" ++ n ++ ")>"
-pretty (AIOFunc n _)    = "<IO Primitive (" ++ n ++ ")>"
+pretty (APrimFunc n)    = "<Function Primitive (" ++ n ++ ")>"
+pretty (AIOFunc n)      = "<IO Primitive (" ++ n ++ ")>"
 pretty (AFunc t n _ _)  = n ++ " (Function)"
 pretty (ACall f as)     = pretty f ++ ": " ++ (intercalate ", " $ map pretty as)
 pretty s@(AString _)    = show $ fromAString s

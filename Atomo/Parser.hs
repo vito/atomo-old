@@ -314,8 +314,8 @@ aPrimCall :: Parser AtomoVal
 aPrimCall = do name <- choice (map (string . fst) primFuncs) <|> choice (map (string . fst) ioPrims)
                params <- aParams
                case lookup name primFuncs of
-                  Just _ -> return $ ACall (APrimFunc name (getPrim name)) params
-                  Nothing -> return $ ACall (AIOFunc name (getIOPrim name)) params
+                  Just _ -> return $ ACall (APrimFunc name) params
+                  Nothing -> return $ ACall (AIOFunc name) params
             <?> "primitive call"
 
 
@@ -357,14 +357,14 @@ aPrimInfix = do val <- buildExpressionParser table targets
                          ]
                          where
                              op s f assoc = Infix ((reservedOp s >> return f) <?> "operator") assoc
-                             mulFunc a b = ACall (APrimFunc "*" (getPrim "*")) [a, b]
-                             divFunc a b = ACall (APrimFunc "/" (getPrim "/")) [a, b]
-                             addFunc a b = ACall (APrimFunc "+" (getPrim "+")) [a, b]
-                             subFunc a b = ACall (APrimFunc "-" (getPrim "-")) [a, b]
-                             concatFunc a b = ACall (APrimFunc "++" (getPrim "++")) [a, b]
-                             equalityFunc a b = ACall (APrimFunc "==" (getPrim "==")) [a, b]
-                             inequalityFunc a b = ACall (APrimFunc "/=" (getPrim "/=")) [a, b]
-                             lessFunc a b = ACall (APrimFunc "<" (getPrim "<")) [a, b]
+                             mulFunc a b = ACall (APrimFunc "*") [a, b]
+                             divFunc a b = ACall (APrimFunc "/") [a, b]
+                             addFunc a b = ACall (APrimFunc "+") [a, b]
+                             subFunc a b = ACall (APrimFunc "-") [a, b]
+                             concatFunc a b = ACall (APrimFunc "++") [a, b]
+                             equalityFunc a b = ACall (APrimFunc "==") [a, b]
+                             inequalityFunc a b = ACall (APrimFunc "/=") [a, b]
+                             lessFunc a b = ACall (APrimFunc "<") [a, b]
 
                  targets = do val <- parens aExpr
                                  <|> try aVar

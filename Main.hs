@@ -21,8 +21,8 @@ patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
 
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
-apply e (APrimFunc _ f) as = liftThrows $ f as
-apply e (AIOFunc _ f) as   = f as
+apply e (APrimFunc n) as = liftThrows $ (getPrim n) as
+apply e (AIOFunc n) as   = (getIOPrim n) as
 apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
                                  let env = (globalScope e, new)
@@ -41,8 +41,8 @@ eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e val@(AInt _)          = return val
 eval e val@(AChar _)         = return val
 eval e val@(ADouble _)       = return val
-eval e val@(APrimFunc _ _)   = return val
-eval e val@(AIOFunc _ _)     = return val
+eval e val@(APrimFunc _)     = return val
+eval e val@(AIOFunc _)       = return val
 eval e val@(AString _)       = return val
 eval e val@(AConstruct c d)  = return val
 eval e val@(AFunc _ n _ _)   = setGlobal e n val
@@ -103,6 +103,9 @@ execute e s = do let parsed = readExprs s
                                          Left err -> print err -- Runtime error
                                          Right v -> return ()
 
+-- Dump an abstract syntax tree
+dumpAST :: String -> IO ()
+dumpAST s = print (extractValue (readExprs s))
 
 -- The Read-Evaluate-Print Loop
 repl :: Env -> InputT IO ()
@@ -124,4 +127,6 @@ main = do args <- getArgs
                        execute env source
                2 -> do source <- readFile (args !! 1)
                        compile source
+               3 -> do source <- readFile (args !! 0)
+                       dumpAST source
                otherwise -> putStrLn "`atomo` only takes 1 or 0 arguments."
