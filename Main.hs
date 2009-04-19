@@ -95,7 +95,13 @@ evalString e s = runIOThrows $ liftM show $ (liftThrows $ readExpr s) >>= eval e
 
 -- Execute a string
 execute :: Env -> String -> IO ()
-execute e s = (runIOThrows $ (liftM show $ (liftThrows $ readExprs s) >>= evalAll e)) >>= putStrLn
+execute e s = do let parsed = readExprs s
+                 case parsed of -- Catch parse errors
+                      Left err -> print err
+                      Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
+                                    case res of
+                                         Left err -> print err -- Runtime error
+                                         Right v -> return ()
 
 
 -- The Read-Evaluate-Print Loop
