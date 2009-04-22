@@ -4,6 +4,7 @@ module Atomo.Parser where
 
 import Atomo.Error
 import Atomo.Internals
+import Atomo.Primitive
 
 import Control.Monad
 import Control.Monad.Error
@@ -26,7 +27,7 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.commentLine     = "--"
                          , P.nestedComments  = True
                          , P.identStart      = letter
-                         , P.identLetter     = alphaNum <|> oneOf "_'?"
+                         , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
                          , P.reservedOpNames = ["=", "=>", "->", "+", "-", "*", "/", "++"]
@@ -78,6 +79,7 @@ inCommentSingle = (try (string (P.commentEnd atomoDef)) >> return ())
 
 parens     = P.parens atomo
 brackets   = P.brackets atomo
+braces     = P.braces atomo
 comma      = P.comma atomo
 commaSep   = P.commaSep atomo
 commaSep1  = P.commaSep1 atomo
@@ -147,17 +149,17 @@ aAttribute = do target <- aReference
                 attribute <- identifier
                 return $ AAttribute (target, attribute)
 -- Type
-aType :: Parser String
-aType = try (do ret <- identifier
-                char 'f'
-                args <- parens (commaSep identifier)
-                return (ret ++ " f(" ++ intercalate ", " args ++ ")"))
-    <|> identifier
-    <|> try (do open <- char '['
-                theType <- identifier
-                close <- char ']'
-                whiteSpace
-                return (open : theType ++ [close]))
+aType :: Parser Type
+aType = try (do ret <- (identifier >>= return . Name) <|> parens aType
+                anyChar
+                args <- parens (commaSep aType)
+                return $ Type (ret, args))
+    <|> try (do con <- identifier
+                args <- parens (commaSep aType)
+                return $ Type (Name con, args))
+    <|> try (do theType <- brackets aType
+                return $ Type (Name "[]", [theType]))
+    <|> (identifier >>= return . Name)
 
         <?> "type declaration"
 
@@ -211,17 +213,22 @@ aFunc = do func <- aFuncHeader
            return $ func code
         <?> "function"
 
+-- Data constructor
+aConstructor :: Parser (String, [Type])
+aConstructor = do name <- identifier
+                  params <- parens (commaSep aType) <|> return []
+                  return $ (name, params)
+
 -- New data declaration
 aData :: Parser AtomoVal
 aData = do reserved "data"
            name <- identifier
+           params <- parens (commaSep aType) <|> return []
            colon
            optional newline
            whiteSpace
-           constructors <- (do con <- identifier
-                               return $ AConstruct con) `sepBy` (symbol "|")
-           let d = AData name (map ($ d) constructors)
-           return d
+           constructors <- aConstructor `sepBy` (symbol "|")
+           return $ AData name params constructors
 
 -- If/If-Else
 aIf :: Parser AtomoVal
@@ -251,51 +258,43 @@ aAssign = do names <- commaSep1 identifier
 
 -- Parse a list (mutable list of values of one type)
 aList :: Parser AtomoVal
-aList = do char '['
-           contents <- commaSep aExpr
-           char ']'
+aList = do contents <- brackets $ commaSep aExpr
            return $ AList contents
 
 -- Parse a tuple (immutable list of values of any type)
 aTuple :: Parser AtomoVal
-aTuple = do char '('
-            contents <- commaSep (do theType <- aType
-                                     expr <- aExpr
-                                     return (theType, expr))
-            char ')'
+aTuple = do contents <- parens $ commaSep (do theType <- aType
+                                              expr <- aExpr
+                                              return (theType, expr))
             return $ ATuple contents
 
 -- Parse a hash (mutable, named contents of any type)
 aHash :: Parser AtomoVal
-aHash = do char '{'
-           whiteSpace
-           contents <- commaSep (do theType <- aType
-                                    name <- identifier
-                                    colon
-                                    whiteSpace
-                                    expr <- aExpr
-                                    return (name, (theType, expr)))
-           whiteSpace
-           char '}'
+aHash = do contents <- braces $ commaSep (do theType <- aType
+                                             name <- identifier
+                                             colon
+                                             whiteSpace
+                                             expr <- aExpr
+                                             return (name, (theType, expr)))
            return $ AHash contents
 
 -- Parse a number
 aNumber :: Parser AtomoVal
-aNumber = integer >>= return . AInt
+aNumber = integer >>= return . intToPrim
+          <?> "integer"
 
 aDouble :: Parser AtomoVal
-aDouble = float >>= return . ADouble
+aDouble = float >>= return . doubleToPrim
+          <?> "double"
 
 -- Parse a string
 aString :: Parser AtomoVal
-aString = do string <- stringLiteral
-             return (toAString string)
+aString = stringLiteral >>= return . toAString
           <?> "string"
 
 -- Parse a single character
 aChar :: Parser AtomoVal
-aChar = do char <- charLiteral
-           return (AChar char)
+aChar = charLiteral >>= return . charToPrim
         <?> "character"
 
 -- Parameters to a function call
@@ -318,23 +317,6 @@ aPrimCall = do name <- choice (map (string . fst) primFuncs) <|> choice (map (st
                   Nothing -> return $ ACall (AIOFunc name) params
             <?> "primitive call"
 
-
-primBool :: AtomoVal
-primBool = AData "bool" [primTrue, primFalse]
-
-primTrue :: AtomoVal
-primTrue = AConstruct "true" primBool
-
-primFalse :: AtomoVal
-primFalse = AConstruct "false" primBool
-
-primNot :: AtomoVal -> AtomoVal
-primNot (AConstruct "true" _)  = primFalse
-primNot (AConstruct "false" _) = primTrue
-
-boolToPrim :: Bool -> AtomoVal
-boolToPrim True = primTrue
-boolToPrim False = primFalse
 
 aPrimInfix :: Parser AtomoVal
 aPrimInfix = do val <- buildExpressionParser table targets
@@ -397,16 +379,15 @@ primFuncs = [ ("++", concatFunc)
             , ("type", typeFunc)
             ]
             where
-                addFunc [AInt a, AInt b] = return $ AInt $ a + b
-                addFunc [ADouble a, ADouble b] = return $ ADouble $ a + b
-                subFunc [AInt a, AInt b] = return $ AInt $ a - b
-                subFunc [ADouble a, ADouble b] = return $ ADouble $ a - b
-                mulFunc [AInt a, AInt b] = return $ AInt $ a * b
-                mulFunc [ADouble a, ADouble b] = return $ ADouble $ a * b
-                divFunc [AInt a, AInt b] = return $ AInt $ a `div` b
-                divFunc [ADouble a, ADouble b] = return $ ADouble $ a / b
+                addFunc [a, b] = return $ primAdd a b
+                subFunc [a, b] = return $ primSub a b
+                mulFunc [a, b] = return $ primMul a b
+                divFunc [a, b] = return $ primDiv a b
+                
                 showFunc [a] = return $ toAString $ pretty a
+
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
+
                 equalityFunc [(AInt a), (AInt b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AChar a), (AChar b)] = return $ boolToPrim (a == b)
                 equalityFunc [(ADouble a), (ADouble b)] = return $ boolToPrim (a == b)
@@ -415,10 +396,13 @@ primFuncs = [ ("++", concatFunc)
                 equalityFunc [(AVariable a), (AVariable b)] = return $ boolToPrim (a == b)
                 equalityFunc [(ADefine _ _ a), (ADefine _ _ b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AAssign _ a), (AAssign _ b)] = return $ boolToPrim (a == b)
-                equalityFunc _ = return $ primFalse
+                equalityFunc [a, b] = return $ boolToPrim (a == b)
+
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
+
                 lessFunc [a, b] = return $ boolToPrim $ (<) (fromAInt a) (fromAInt b)
-                typeFunc [a] = return $ toAString $ getType a
+
+                typeFunc [a] = return . toAString . prettyType $ getType a
 
 -- Primitive I/O functions
 ioPrims :: [(String, [AtomoVal] -> IOThrowsError AtomoVal)]

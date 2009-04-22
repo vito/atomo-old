@@ -14,8 +14,9 @@ import System.Console.Haskeline
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
-primIf e (AConstruct "true" _) b _ = eval e b
-primIf e _ _ f                     = eval e f -- Condition is false, evaluate "else" if any
+primIf e (AConstruct "true" _ _)  a _ = eval e a
+primIf e (AConstruct "false" _ _) _ b = eval e b
+primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") (getType a)
 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
@@ -28,56 +29,66 @@ apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  let env = (globalScope e, new)
                                  setLocals env ps as
                                  res <- eval env b
-                                 if getType res /= t
-                                    then throwError $ TypeMismatch t (getType res)
-                                    else return res
+                                 if checkType res t
+                                    then return res
+                                    else throwError $ TypeMismatch t (getType res)
                               where setLocals _ [] [] = return ()
                                     setLocals _ (x:_) [] = throwError $ NumArgs (length ps) (length as)
                                     setLocals _ [] (a:_) = throwError $ NumArgs (length ps) (length as)
-                                    setLocals e (x:xs) (a:as) | getType a /= (fst x) = throwError $ TypeMismatch (fst x) (getType a)
-                                                              | otherwise = setLocal e (snd x) a >> setLocals e xs as
+                                    setLocals e (x:xs) (a:as) | checkType a (fst x) = setLocal e (snd x) a >> setLocals e xs as
+                                                              | otherwise = throwError $ TypeMismatch (fst x) (getType a)
+apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
+                                                      Just ts -> do checkArgs ts as
+                                                                    return $ AConstruct n as d
+                                                      Nothing -> throwError $ Default "Constructor/Data mismatch."
+                                                where
+                                                   checkArgs [] [] = return ()
+                                                   checkArgs (_:_) [] = throwError $ NumArgs (length ps) (length as)
+                                                   checkArgs [] (_:_) = throwError $ NumArgs (length ps) (length as)
+                                                   checkArgs (p:ps) (a:as) | checkType a p = checkArgs ps as
+                                                                           | otherwise = throwError $ TypeMismatch p (getType a)
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
-eval e val@(AInt _)          = return val
-eval e val@(AChar _)         = return val
-eval e val@(ADouble _)       = return val
-eval e val@(APrimFunc _)     = return val
-eval e val@(AIOFunc _)       = return val
-eval e val@(AString _)       = return val
-eval e val@(AConstruct c d)  = return val
-eval e val@(AFunc _ n _ _)   = setGlobal e n val
-eval e (ATuple vs)           = do tuple <- mapM (\(t, v) -> do val <- eval e v
-                                                               return (t, val)) vs
-                                  case verifyTuple tuple of
-                                       Nothing -> return $ ATuple tuple
-                                       Just (expect, found) -> throwError $ TypeMismatch expect found
-eval e (AHash vs)            = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
-                                                                   return (n, (t, val))) vs
-                                  case verifyHash hash of
-                                       Nothing -> return $ AHash hash
-                                       Just (expect, found) -> throwError $ TypeMismatch expect found
-eval e (AList as)            = do list <- mapM (eval e) as
-                                  case verifyList list of
-                                       Nothing -> return $ AList list
-                                       Just (expect, found) -> throwError $ TypeMismatch expect found
-eval e (AVariable s)         = getAny e s
-eval e (ADefine t s v)       = do val <- eval e v
-                                  if getType val == t
-                                     then setLocal e s val
-                                     else throwError $ TypeMismatch t (getType val)
-eval e (AAssign s v)         = do val <- eval e v
-                                  orig <- getAny e s
-                                  if getType val == getType orig
-                                     then setLocal e s val
-                                     else throwError $ TypeMismatch (getType orig) (getType val)
-eval e (ACall f as)          = do fun <- eval e f
-                                  args <- mapM (eval e) as
-                                  apply e fun args
-eval e (ABlock es)           = evalAll e es
-eval e (AData s cs)          = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
-eval e (AIf c b f)           = do cond <- eval e c
-                                  primIf e cond b f
-eval e v                     = throwError $ Default $ "Can't evaluate: " ++ show v
+eval e val@(AInt _)           = return val
+eval e val@(AChar _)          = return val
+eval e val@(ADouble _)        = return val
+eval e val@(APrimFunc _)      = return val
+eval e val@(AIOFunc _)        = return val
+eval e val@(AString _)        = return val
+eval e val@(AConstruct _ _ _) = return val
+eval e val@(AFunc _ n _ _)    = setGlobal e n val
+eval e (ATuple vs)     = do tuple <- mapM (\(t, v) -> do val <- eval e v
+                                                         return (t, val)) vs
+                            case verifyTuple tuple of
+                                 Nothing -> return $ ATuple tuple
+                                 Just (expect, found) -> throwError $ TypeMismatch expect found
+eval e (AHash vs)      = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
+                                                             return (n, (t, val))) vs
+                            case verifyHash hash of
+                                 Nothing -> return $ AHash hash
+                                 Just (expect, found) -> throwError $ TypeMismatch expect found
+eval e (AList as)      = do list <- mapM (eval e) as
+                            case verifyList list of
+                                 Nothing -> return $ AList list
+                                 Just (expect, found) -> throwError $ TypeMismatch expect found
+eval e (AVariable s)   = getAny e s
+eval e (ADefine t s v) = do val <- eval e v
+                            if checkType val t
+                               then setLocal e s val
+                               else throwError $ TypeMismatch t (getType val)
+eval e (AAssign s v)   = do val <- eval e v
+                            orig <- getAny e s
+                            if checkType val (getType orig)
+                               then setLocal e s val
+                               else throwError $ TypeMismatch (getType orig) (getType val)
+eval e (ACall f as)    = do fun <- eval e f
+                            args <- mapM (eval e) as
+                            apply e fun args
+eval e (ABlock es)     = evalAll e es
+eval e v@(AData s _ cs)  = mapM_ (\c -> setGlobal e (fst c) (AConstruct (fst c) [] v)) cs >> return ANone
+eval e (AIf c b f)     = do cond <- eval e c
+                            primIf e cond b f
+eval e v               = throwError $ Default $ "Can't evaluate: " ++ show v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
 evalAll e es = evalAll' e es ANone

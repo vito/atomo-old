@@ -32,7 +32,7 @@ isImmutable e s = do env <- readIORef e
                      let av = fromJust $ lookup s env
                      val <- readIORef av
                      case val of
-                          (AConstruct _ _) -> return True
+                          (AConstruct _ _ _) -> return True
                           _ -> return False
 
 setVal :: Scope -> String -> AtomoVal -> IOThrowsError AtomoVal

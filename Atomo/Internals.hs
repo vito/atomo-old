@@ -4,7 +4,9 @@ import Control.Monad.Error
 import Data.List (intercalate)
 import Text.Parsec (ParseError)
 
-type Type = String
+data Type = Name String | Type (Type, [Type])
+            deriving (Show, Eq)
+
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
@@ -26,23 +28,14 @@ data AtomoVal = AInt Integer
               | ACall AtomoVal [AtomoVal]
               | AString AtomoVal -- AString == AList of AChars
               | ABlock [AtomoVal]
-              | AData String [AtomoVal]
-              | AConstruct String AtomoVal
+              | AData String [Type] [(String, [Type])]
+              | AConstruct String [AtomoVal] AtomoVal
               | AIf AtomoVal AtomoVal AtomoVal
               | ANone
-              deriving (Show)
-
-instance Eq AtomoVal where
-    (AInt a) == (AInt b) = a == b
-    (AChar a) == (AChar b) = a == b
-    (ADouble a) == (ADouble b) = a == b
-    (AList a) == (AList b) = a == b
-    (AString a) == (AString b) = a == b
-    (AVariable a) == (AVariable b) = a == b
-    (ADefine _ _ a) == (ADefine _ _ b) = a == b
-    (AAssign _ a) == (AAssign _ b) = a == b
+              deriving (Show, Eq)
 
 fromAInt (AInt i) = i
+fromAInt (AConstruct "int" [AInt i] _) = i
 fromAChar (AChar c) = c
 fromADouble (ADouble d) = d
 fromAVariable (AVariable n) = n
@@ -50,8 +43,8 @@ fromAList (AList l) = l
 fromAList (AString l) = fromAList l
 fromAString (AString s) = map fromAChar (fromAList s)
 fromAString (AList l) = map fromAChar (fromAList (AList l))
-fromAConstruct (AConstruct s _) = s
-fromAData (AData s _) = s
+fromAConstruct (AConstruct s _ _) = s
+fromAData (AData s _ _) = s
 
 data AtomoError = NumArgs Int Int
                 | ImmutableVar String
@@ -65,7 +58,7 @@ data AtomoError = NumArgs Int Int
 instance Show AtomoError where
     show (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found " ++ show found
     show (ImmutableVar var)            = "Cannot reassign immutable reference `" ++ var ++ "`"
-    show (TypeMismatch expected found) = "Invalid type; expected " ++ expected ++ ", found " ++ found
+    show (TypeMismatch expected found) = "Invalid type; expected " ++ prettyType expected ++ ", found " ++ prettyType found
     show (NotFunction message func)    = message ++ ": " ++ func
     show (UnboundVar message var)      = message ++ ": " ++ var
     show (Parser err)                  = "Parse error at " ++ show err
@@ -79,35 +72,51 @@ verifyList :: [AtomoVal] -> Maybe (Type, Type)
 verifyList [] = Nothing
 verifyList (x:xs) = verifyList' (getType x) xs
                     where verifyList' t [] = Nothing
-                          verifyList' t (x:xs) | getType x == t = verifyList' t xs
+                          verifyList' t (x:xs) | checkType x t = verifyList' t xs
                                                | otherwise = Just (t, getType x)
 
 verifyTuple :: [(Type, AtomoVal)] -> Maybe (Type, Type)
 verifyTuple [] = Nothing
-verifyTuple ((t, v):vs) | t == getType v = verifyTuple vs
+verifyTuple ((t, v):vs) | checkType v t = verifyTuple vs
                         | otherwise = Just (t, getType v)
 
 verifyHash :: [(String, (Type, AtomoVal))] -> Maybe (Type, Type)
 verifyHash [] = Nothing
-verifyHash ((_, (t, v)):vs) | t == getType v = verifyHash vs
+verifyHash ((_, (t, v)):vs) | checkType v t = verifyHash vs
                             | otherwise = Just (t, getType v)
 
 getType :: AtomoVal -> Type
-getType (AInt _) = "int"
-getType (AChar _) = "char"
-getType (ADouble _) = "double"
-getType (ATuple _) = "tuple"
-getType (AHash _) = "hash"
-getType (AString _) = "string" -- todo: make type aliases work
-getType (AConstruct _ t) = getType t
-getType (AData n _) = n
-getType (AFunc t _ as _) = t ++ " f(" ++ intercalate ", " (map fst as) ++ ")"
-getType (AList []) = "[]"
-getType (AList as) = "[" ++ getType (head as) ++ "]"
-getType _ = "unknown"
+getType (ADouble _) = Name "double"
+getType (ATuple _) = Name "tuple"
+getType (AHash _) = Name "hash"
+getType (AString _) = Name "string" -- todo: make type aliases work
+getType (AConstruct _ _ (AData n [] _)) = Name n
+getType (AConstruct _ as (AData n _ _)) = Type (Name n, map getType as)
+getType (AData n [] _) = Name n
+getType (AData n as _) = Type (Name n, as)
+getType (AFunc t _ as _) = Type (t, map fst as)
+getType (AList []) = Name "[]"
+getType (AList as) = Type (Name "[]", [getType (head as)])
+getType _ = Name "unknown"
 
 getReturnType (AFunc t _ _ _) = t
 getReturnType a = getType a
+
+checkType :: AtomoVal -> Type -> Bool
+-- todo: type aliases, and alias string to [char] in the prelude
+--       so we don't have to do this silliness
+checkType (AString _) (Type (Name "[]", [Name "char"]))
+          = True -- `[char] foo = "hi"`
+checkType (AList (AConstruct _ _ (AData "char" _ _):_)) (Name "string")
+          = True -- `string foo = ['h', 'i']1
+checkType _ (Name [_]) = True
+checkType a b = matchTypes (getType a) b
+
+matchTypes :: Type -> Type -> Bool
+matchTypes (Type (a, as)) (Type (b, bs)) = matchTypes a b && and (zipWith (matchTypes) as bs)
+matchTypes (Name a) (Name b) | a == b = True
+                             | otherwise = length a == 1 || length b == 2
+matchTypes a b = False
 
 pretty :: AtomoVal -> String
 pretty (AInt int)       = show int
@@ -116,9 +125,9 @@ pretty (ADouble double) = show double
 pretty (AList str@(AChar _:_)) = show $ AString $ AList str
 pretty (AList list)     = "[" ++ (intercalate ", " (map pretty list)) ++ "]"
 pretty (AHash es)       = "{ " ++ (intercalate ", " (map prettyVal es)) ++ " }"
-                          where prettyVal (n, (t, v)) = t ++ " " ++ n ++ ": " ++ pretty v
+                          where prettyVal (n, (t, v)) = (prettyType t) ++ " " ++ n ++ ": " ++ pretty v
 pretty (ATuple vs)      = "(" ++ (intercalate ", " (map prettyVal vs)) ++ ")"
-                          where prettyVal (t, v) = t ++ " " ++ pretty v
+                          where prettyVal (t, v) = (prettyType t) ++ " " ++ pretty v
 pretty (AVariable n)    = "Variable: " ++ n
 pretty (ADefine _ _ v)  = pretty v
 pretty (AAssign _ v)    = pretty v
@@ -129,6 +138,15 @@ pretty (AFunc t n _ _)  = n ++ " (Function)"
 pretty (ACall f as)     = pretty f ++ ": " ++ (intercalate ", " $ map pretty as)
 pretty s@(AString _)    = show $ fromAString s
 pretty (ABlock es)      = intercalate "\n" $ map pretty es
-pretty (AData s cs)     = s ++ " (Data): " ++ (intercalate " | " $ map fromAConstruct cs)
-pretty (AConstruct s d) = s
+pretty (AData s _ cs)   = s ++ " (Data): " ++ (intercalate " | " $ map show cs)
+pretty (AConstruct "int" [AInt i] _) = show i
+pretty (AConstruct "double" [ADouble d] _) = show d
+pretty (AConstruct "char" [AChar c] _) = show c
+pretty (AConstruct s [] _) = s
+pretty (AConstruct s as _) = s ++ "(" ++ (intercalate ", " (map pretty as)) ++ ")"
 pretty ANone            = "None"
+
+prettyType :: Type -> String
+prettyType (Type (Name "[]", [t])) = "[" ++ prettyType t ++ "]"
+prettyType (Type (a, ts)) = prettyType a ++ "(" ++ intercalate ", " (map prettyType ts) ++ ")"
+prettyType (Name a) = a
