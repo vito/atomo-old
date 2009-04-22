@@ -122,7 +122,7 @@ aExpr = try aVar
     <|> try aAssign
     <|> aList
     <|> aHash
-    <|> try aTuple
+    <|> aTuple
     <|> try aDouble
     <|> aNumber
     <|> aString

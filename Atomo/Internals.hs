@@ -91,7 +91,14 @@ getType (ATuple _) = Name "tuple"
 getType (AHash _) = Name "hash"
 getType (AString _) = Name "string" -- todo: make type aliases work
 getType (AConstruct _ _ (AData n [] _)) = Name n
-getType (AConstruct _ as (AData n _ _)) = Type (Name n, map getType as)
+getType (AConstruct c as (AData n ps cs)) = Type (Name n, args as ps cs)
+                                            where
+                                                args as _ _ = map (\ a -> case lookup a values of
+                                                                               Just v -> getType v
+                                                                               Nothing -> a) ps
+                                                              where values = zip (argNames cs) as
+                                                argNames ((n,v):ps) | n == c = v
+                                                                    | otherwise = argNames ps
 getType (AData n [] _) = Name n
 getType (AData n as _) = Type (Name n, as)
 getType (AFunc t _ as _) = Type (t, map fst as)
@@ -115,7 +122,7 @@ checkType a b = matchTypes (getType a) b
 matchTypes :: Type -> Type -> Bool
 matchTypes (Type (a, as)) (Type (b, bs)) = matchTypes a b && and (zipWith (matchTypes) as bs)
 matchTypes (Name a) (Name b) | a == b = True
-                             | otherwise = length a == 1 || length b == 2
+                             | otherwise = length a == 1 || length b == 1
 matchTypes a b = False
 
 pretty :: AtomoVal -> String
