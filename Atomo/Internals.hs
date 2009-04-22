@@ -91,12 +91,12 @@ getType (ATuple _) = Name "tuple"
 getType (AHash _) = Name "hash"
 getType (AString _) = Name "string" -- todo: make type aliases work
 getType (AConstruct _ _ (AData n [] _)) = Name n
-getType (AConstruct c as (AData n ps cs)) = Type (Name n, args as ps cs)
+getType (AConstruct c as (AData n ps cs)) = Type (Name n, args)
                                             where
-                                                args as _ _ = map (\ a -> case lookup a values of
-                                                                               Just v -> getType v
-                                                                               Nothing -> a) ps
-                                                              where values = zip (argNames cs) as
+                                                args = map (\ a -> case lookup a values of
+                                                                        Just v -> getType v
+                                                                        Nothing -> a) ps
+                                                       where values = zip (argNames cs) as
                                                 argNames ((n,v):ps) | n == c = v
                                                                     | otherwise = argNames ps
 getType (AData n [] _) = Name n
