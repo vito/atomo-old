@@ -71,4 +71,3 @@ primDiv (AConstruct "int" [AInt a] _) (AConstruct "int" [AInt b] _)
         = intToPrim $ a `div` b
 primDiv (AConstruct "double" [ADouble a] _) (AConstruct "double" [ADouble b] _)
         = doubleToPrim $ a / b
-

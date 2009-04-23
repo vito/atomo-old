@@ -29,12 +29,15 @@ apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  let env = (globalScope e, new)
                                  setLocals env ps as
                                  res <- eval env b
-                                 if checkType res t
-                                    then return res
-                                    else throwError $ TypeMismatch t (getType res)
+                                 returned <- (case res of
+                                                   AReturn r -> eval env r
+                                                   a -> return a)
+                                 if checkType returned t
+                                    then return returned
+                                    else throwError $ TypeMismatch t (getType returned)
                               where setLocals _ [] [] = return ()
-                                    setLocals _ (x:_) [] = throwError $ NumArgs (length ps) (length as)
-                                    setLocals _ [] (a:_) = throwError $ NumArgs (length ps) (length as)
+                                    setLocals _ _ []  = throwError $ NumArgs (length ps) (length as)
+                                    setLocals _ [] _  = throwError $ NumArgs (length ps) (length as)
                                     setLocals e (x:xs) (a:as) | checkType a (fst x) = setLocal e (snd x) a >> setLocals e xs as
                                                               | otherwise = throwError $ TypeMismatch (fst x) (getType a)
 apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
@@ -43,8 +46,8 @@ apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
                                                       Nothing -> throwError $ Default "Constructor/Data mismatch."
                                                 where
                                                    checkArgs [] [] = return ()
-                                                   checkArgs (_:_) [] = throwError $ NumArgs (length ps) (length as)
-                                                   checkArgs [] (_:_) = throwError $ NumArgs (length ps) (length as)
+                                                   checkArgs _ [] = throwError $ NumArgs (length ps) (length as)
+                                                   checkArgs [] _ = throwError $ NumArgs (length ps) (length as)
                                                    checkArgs (p:ps) (a:as) | checkType a p = checkArgs ps as
                                                                            | otherwise = throwError $ TypeMismatch p (getType a)
 
@@ -57,6 +60,7 @@ eval e val@(AIOFunc _)        = return val
 eval e val@(AString _)        = return val
 eval e val@(AConstruct _ _ _) = return val
 eval e val@(AFunc _ n _ _)    = setGlobal e n val
+eval e val@(AReturn v)        = return val
 eval e (ATuple vs)     = do tuple <- mapM (\(t, v) -> do val <- eval e v
                                                          return (t, val)) vs
                             case verifyTuple tuple of
@@ -94,15 +98,17 @@ evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
 evalAll e es = evalAll' e es ANone
                where
                    evalAll' :: Env -> [AtomoVal] -> AtomoVal -> IOThrowsError AtomoVal
-                   evalAll' e [] r     = return $ r
+                   evalAll' e [] r     = return r
                    evalAll' e (x:xs) _ = do res <- eval e x
-                                            evalAll' e xs res
-
-evalAndPrint :: Env -> String -> IO ()
-evalAndPrint e s = evalString e s >>= putStrLn
+                                            case res of
+                                                 r@(AReturn _) -> return r
+                                                 otherwise -> evalAll' e xs res
 
 evalString :: Env -> String -> IO String
 evalString e s = runIOThrows $ liftM pretty $ (liftThrows $ readExpr s) >>= eval e
+
+evalAndPrint :: Env -> String -> IO ()
+evalAndPrint e s = evalString e s >>= putStrLn
 
 -- Execute a string
 execute :: Env -> String -> IO ()

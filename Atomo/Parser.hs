@@ -120,6 +120,7 @@ aExpr = try aVar
     <|> try aClass
     <|> try aIf
     <|> try aAssign
+    <|> aReturn
     <|> aList
     <|> aHash
     <|> aTuple
@@ -186,6 +187,11 @@ aFuncHeader = do theType <- aType
                  return $ AFunc theType funcName args
               <?> "function header"
 
+-- Return statement
+aReturn :: Parser AtomoVal
+aReturn = do reserved "return"
+             expr <- aExpr
+             return $ AReturn expr
 -- Block
 aBlock :: Parser AtomoVal
 aBlock = do colon
@@ -235,10 +241,9 @@ aIf :: Parser AtomoVal
 aIf = do reserved "if"
          cond <- aExpr
          code <- aBlock
-         other <- try (reserved "else" >> aBlock) <|> return ANone
+         other <- try (reserved "else" >> aBlock) <|> (return $ ABlock [])
          return $ AIf cond code other
          
-
 -- Variable assignment
 aVar :: Parser AtomoVal
 aVar = do theType <- aType
@@ -283,6 +288,7 @@ aNumber :: Parser AtomoVal
 aNumber = integer >>= return . intToPrim
           <?> "integer"
 
+-- Parse a floating-point number
 aDouble :: Parser AtomoVal
 aDouble = float >>= return . doubleToPrim
           <?> "double"
@@ -418,6 +424,7 @@ getIOPrim = fromJust . (flip lookup ioPrims)
 
 getPrim :: String -> ([AtomoVal] -> ThrowsError AtomoVal)
 getPrim = fromJust . (flip lookup primFuncs)
+
 
 -- Parse a string or throw any errors
 readOrThrow :: Parser a -> String -> ThrowsError a

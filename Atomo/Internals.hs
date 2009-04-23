@@ -31,6 +31,7 @@ data AtomoVal = AInt Integer
               | AData String [Type] [(String, [Type])]
               | AConstruct String [AtomoVal] AtomoVal
               | AIf AtomoVal AtomoVal AtomoVal
+              | AReturn AtomoVal
               | ANone
               deriving (Show, Eq)
 
@@ -97,14 +98,16 @@ getType (AConstruct c as (AData n ps cs)) = Type (Name n, args)
                                                                         Just v -> getType v
                                                                         Nothing -> a) ps
                                                        where values = zip (argNames cs) as
-                                                argNames ((n,v):ps) | n == c = v
-                                                                    | otherwise = argNames ps
+                                                             argNames [] = []
+                                                             argNames ((n,v):ps) | n == c = v
+                                                                                 | otherwise = argNames ps
 getType (AData n [] _) = Name n
 getType (AData n as _) = Type (Name n, as)
 getType (AFunc t _ as _) = Type (t, map fst as)
 getType (AList []) = Name "[]"
 getType (AList as) = Type (Name "[]", [getType (head as)])
-getType _ = Name "unknown"
+getType (AReturn r) = getType r
+getType a = Name "unknown"
 
 getReturnType (AFunc t _ _ _) = t
 getReturnType a = getType a
@@ -152,6 +155,7 @@ pretty (AConstruct "char" [AChar c] _) = show c
 pretty (AConstruct s [] _) = s
 pretty (AConstruct s as _) = s ++ "(" ++ (intercalate ", " (map pretty as)) ++ ")"
 pretty ANone            = "None"
+pretty a                = show a
 
 prettyType :: Type -> String
 prettyType (Type (Name "[]", [t])) = "[" ++ prettyType t ++ "]"
