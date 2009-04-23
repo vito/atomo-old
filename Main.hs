@@ -21,6 +21,7 @@ primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
 
+-- Function/Constructor application
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
 apply e (APrimFunc n) as = liftThrows $ (getPrim n) as
 apply e (AIOFunc n) as   = (getIOPrim n) as
@@ -35,32 +36,38 @@ apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  if checkType returned t
                                     then return returned
                                     else throwError $ TypeMismatch t (getType returned)
-                              where setLocals _ [] [] = return ()
-                                    setLocals _ _ []  = throwError $ NumArgs (length ps) (length as)
-                                    setLocals _ [] _  = throwError $ NumArgs (length ps) (length as)
-                                    setLocals e (x:xs) (a:as) | checkType a (fst x) = setLocal e (snd x) a >> setLocals e xs as
-                                                              | otherwise = throwError $ TypeMismatch (fst x) (getType a)
+                              where
+                                  setLocals _ [] [] = return ()
+                                  setLocals _ _ []  = throwError $ NumArgs (length ps) (length as)
+                                  setLocals _ [] _  = throwError $ NumArgs (length ps) (length as)
+                                  setLocals e (x:xs) (a:as) | checkType a (fst x) = do setLocal e (snd x) a
+                                                                                       setLocals e xs' as
+                                                            | otherwise = throwError $ TypeMismatch (fst x) (getType a)
+                                                            where
+                                                                xs' = zip replacedTypes argNames
+                                                                replacedTypes = swapType (map fst xs) (fst x) (getType a)
+                                                                argNames = map snd xs
 apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
                                                       Just ts -> do checkArgs ts as
                                                                     return $ AConstruct n as d
                                                       Nothing -> throwError $ Default "Constructor/Data mismatch."
                                                 where
-                                                   checkArgs [] [] = return ()
-                                                   checkArgs _ [] = throwError $ NumArgs (length ps) (length as)
-                                                   checkArgs [] _ = throwError $ NumArgs (length ps) (length as)
-                                                   checkArgs (p:ps) (a:as) | checkType a p = checkArgs (swapType ps p (getType a)) as
-                                                                           | otherwise = throwError $ TypeMismatch p (getType a)
+                                                    checkArgs [] [] = return ()
+                                                    checkArgs _ [] = throwError $ NumArgs (length ps) (length as)
+                                                    checkArgs [] _ = throwError $ NumArgs (length ps) (length as)
+                                                    checkArgs (p:ps) (a:as) | checkType a p = checkArgs (swapType ps p (getType a)) as
+                                                                            | otherwise = throwError $ TypeMismatch p (getType a)
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
-eval e val@(AInt _)           = return val
-eval e val@(AChar _)          = return val
-eval e val@(ADouble _)        = return val
-eval e val@(APrimFunc _)      = return val
-eval e val@(AIOFunc _)        = return val
-eval e val@(AString _)        = return val
-eval e val@(AConstruct _ _ _) = return val
-eval e val@(AFunc _ n _ _)    = setGlobal e n val
-eval e val@(AReturn v)        = return val
+eval e v@(AInt _)           = return v
+eval e v@(AChar _)          = return v
+eval e v@(ADouble _)        = return v
+eval e v@(APrimFunc _)      = return v
+eval e v@(AIOFunc _)        = return v
+eval e v@(AString _)        = return v
+eval e v@(AConstruct _ _ _) = return v
+eval e v@(AReturn _)        = return v
+eval e v@(AFunc _ n _ _)    = setGlobal e n v
 eval e (ATuple vs)     = do tuple <- mapM (\(t, v) -> do val <- eval e v
                                                          return (t, val)) vs
                             case verifyTuple tuple of
