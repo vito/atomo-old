@@ -123,18 +123,18 @@ checkType _ (Name [_]) = True
 checkType a b = matchTypes (getType a) b
 
 matchTypes :: Type -> Type -> Bool
-matchTypes (Type (a, as)) (Type (b, bs)) = matchTypes a b && and (zipWith (matchTypes) as bs)
-matchTypes (Name a) (Name b) | a == b = True
-                             | otherwise = length a == 1 || length b == 1
+matchTypes (Name a) (Name b) = a == b || length a == 1 || length b == 1
+matchTypes (Type (a, as)) (Type (b, bs)) = matchTypes a b && (length as) == (length bs) && and (zipWith (matchTypes) as bs)
 matchTypes a b = False
 
-replaceAmbig :: [Type] -> Type -> Type-> [Type]
-replaceAmbig ts t n = replaceAmbig' ts [] t n
-                      where
-                          replaceAmbig' [] acc _ _ = acc
-                          replaceAmbig' (t@(Type (a, ts')):ts) acc f r = replaceAmbig' ts (acc ++ [Type (a, replaceAmbig ts' f r)]) f r
-                          replaceAmbig' (t@(Name _):ts) acc f r | t == f = replaceAmbig' ts (acc ++ [r]) f r
-                                                                | otherwise = replaceAmbig' ts (acc ++ [t]) f r
+-- Deep-replace a type with another type (used for replacing ambiguous types)
+swapType :: [Type] -> Type -> Type-> [Type]
+swapType ts t n = swapType' ts [] t n
+                  where
+                      swapType' [] acc _ _ = acc
+                      swapType' (t@(Type (a, ts')):ts) acc f r = swapType' ts (acc ++ [Type (a, swapType ts' f r)]) f r
+                      swapType' (t@(Name _):ts) acc f r | t == f = swapType' ts (acc ++ [r]) f r
+                                                            | otherwise = swapType' ts (acc ++ [t]) f r
 
 pretty :: AtomoVal -> String
 pretty (AInt int)       = show int
