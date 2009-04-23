@@ -48,7 +48,7 @@ apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
                                                    checkArgs [] [] = return ()
                                                    checkArgs _ [] = throwError $ NumArgs (length ps) (length as)
                                                    checkArgs [] _ = throwError $ NumArgs (length ps) (length as)
-                                                   checkArgs (p:ps) (a:as) | checkType a p = checkArgs ps as
+                                                   checkArgs (p:ps) (a:as) | checkType a p = checkArgs (replaceAmbig ps p (getType a)) as
                                                                            | otherwise = throwError $ TypeMismatch p (getType a)
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal

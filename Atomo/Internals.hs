@@ -128,6 +128,14 @@ matchTypes (Name a) (Name b) | a == b = True
                              | otherwise = length a == 1 || length b == 1
 matchTypes a b = False
 
+replaceAmbig :: [Type] -> Type -> Type-> [Type]
+replaceAmbig ts t n = replaceAmbig' ts [] t n
+                      where
+                          replaceAmbig' [] acc _ _ = acc
+                          replaceAmbig' (t@(Type (a, ts')):ts) acc f r = replaceAmbig' ts (acc ++ [Type (a, replaceAmbig ts' f r)]) f r
+                          replaceAmbig' (t@(Name _):ts) acc f r | t == f = replaceAmbig' ts (acc ++ [r]) f r
+                                                                | otherwise = replaceAmbig' ts (acc ++ [t]) f r
+
 pretty :: AtomoVal -> String
 pretty (AInt int)       = show int
 pretty (AChar char)     = show char
