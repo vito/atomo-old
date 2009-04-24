@@ -44,14 +44,14 @@ primToDouble (AConstruct "double" [ADouble d] _) = d
 
 -- Characters
 primChar :: AtomoVal
-primChar = AData "char" [] []
+primChar = AData "char" [] [("char", [Name "a"])]
 
 charToPrim :: Char -> AtomoVal
-charToPrim c = AConstruct (show c) [] primChar
+charToPrim c = AConstruct "char" [AChar c] primChar
 
 primToChar :: AtomoVal -> Char
 primToChar (AChar c) = c
-primToChar (AConstruct c _ _) = read c
+primToChar (AConstruct "char" [AChar c] _) = c
 
 -- Primitive functions
 primSub, primAdd, primMul, primDiv :: AtomoVal -> AtomoVal -> AtomoVal

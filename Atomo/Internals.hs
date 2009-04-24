@@ -97,10 +97,10 @@ getType (AConstruct c as (AData n ps cs)) = Type (Name n, args)
                                                 args = map (\ a -> case lookup a values of
                                                                         Just v -> getType v
                                                                         Nothing -> a) ps
-                                                       where values = zip (argNames cs) as
-                                                             argNames [] = []
-                                                             argNames ((n,v):ps) | n == c = v
-                                                                                 | otherwise = argNames ps
+                                                values = zip (argNames cs) as
+                                                argNames [] = []
+                                                argNames ((n,v):ps) | n == c = v
+                                                                    | otherwise = argNames ps
 getType (AData n [] _) = Name n
 getType (AData n as _) = Type (Name n, as)
 getType (AFunc t _ as _) = Type (t, map fst as)
@@ -112,14 +112,21 @@ getType a = Name "unknown"
 getReturnType (AFunc t _ _ _) = t
 getReturnType a = getType a
 
-checkType :: AtomoVal -> Type -> Bool
 -- todo: type aliases, and alias string to [char] in the prelude
 --       so we don't have to do this silliness
+checkType :: AtomoVal -> Type -> Bool
+ -- `[char] foo = "hi"`
 checkType (AString _) (Type (Name "[]", [Name "char"]))
-          = True -- `[char] foo = "hi"`
+          = True
+-- `string foo = ['h', 'i']1
 checkType (AList (AConstruct _ _ (AData "char" _ _):_)) (Name "string")
-          = True -- `string foo = ['h', 'i']1
+          = True
+-- Everything matches to "a".."z", at least initially.
 checkType _ (Name [_]) = True
+-- Constructors that take no argument should always match against their constructor
+checkType (AConstruct _ [] (AData n _ _)) (Type (Name n', _)) | n == n' = True
+                                                              | otherwise = False
+-- Everything else? Match the types.
 checkType a b = matchTypes (getType a) b
 
 matchTypes :: Type -> Type -> Bool
