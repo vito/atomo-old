@@ -21,42 +21,48 @@ primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
 
+-- Check the arguments against the types the function defines,
+-- and return any ambiguous types along with their replacement.
+checkArgs :: [Type] -> [AtomoVal] -> IOThrowsError [(Type, Type)]
+checkArgs ts' as' | length ts' /= length as' = throwError $ NumArgs (length ts') (length as')
+                  | otherwise = checkArgs' ts' as' []
+                    where
+                        checkArgs' [] [] rs = return rs
+                        checkArgs' (t:ts) (a:as) rs | checkType a t = checkArgs' (swapType ts t (getType a)) as ((t, getType a) : rs)
+                                                    | otherwise = throwError $ TypeMismatch t (getType a)
+
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
 apply e (APrimFunc n) as = liftThrows $ (getPrim n) as
 apply e (AIOFunc n) as   = (getIOPrim n) as
 apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
+
+                                 -- Check argument types and resolve ambiguous types
+                                 unamb <- checkArgs (map fst ps) as
+                                 let returnType = findDiff t unamb
+
+                                 -- Set local variables for arguments
                                  let env = (globalScope e, new)
-                                 setLocals env ps as
+                                 zipWithM_ (setLocal env) (map snd ps) as
+
+                                 -- Evaluate the function
                                  res <- eval env b
                                  returned <- (case res of
                                                    AReturn r -> eval env r
                                                    a -> return a)
-                                 if checkType returned t
+
+                                 if checkType returned returnType
                                     then return returned
-                                    else throwError $ TypeMismatch t (getType returned)
+                                    else throwError $ TypeMismatch returnType (getType returned)
                               where
-                                  setLocals _ [] [] = return ()
-                                  setLocals _ _ []  = throwError $ NumArgs (length ps) (length as)
-                                  setLocals _ [] _  = throwError $ NumArgs (length ps) (length as)
-                                  setLocals e (x:xs) (a:as) | checkType a (fst x) = do setLocal e (snd x) a
-                                                                                       setLocals e xs' as
-                                                            | otherwise = throwError $ TypeMismatch (fst x) (getType a)
-                                                            where
-                                                                xs' = zip replacedTypes argNames
-                                                                replacedTypes = swapType (map fst xs) (fst x) (getType a)
-                                                                argNames = map snd xs
+                                  findDiff d [] = d
+                                  findDiff d ((f, r):ts) | f == d = r
+                                                         | otherwise = findDiff d ts
 apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
-                                                      Just ts -> do checkArgs ts as
-                                                                    return $ AConstruct n as d
-                                                      Nothing -> throwError $ Default "Constructor/Data mismatch."
-                                                where
-                                                    checkArgs [] [] = return ()
-                                                    checkArgs _ [] = throwError $ NumArgs (length ps) (length as)
-                                                    checkArgs [] _ = throwError $ NumArgs (length ps) (length as)
-                                                    checkArgs (p:ps) (a:as) | checkType a p = checkArgs (swapType ps p (getType a)) as
-                                                                            | otherwise = throwError $ TypeMismatch p (getType a)
+                                                        Just ts -> do checkArgs ts as
+                                                                      return $ AConstruct n as d
+                                                        Nothing -> throwError $ Default "Constructor/Data mismatch."
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e v@(AInt _)           = return v
