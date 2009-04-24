@@ -22,7 +22,7 @@ patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
 
 -- Check the arguments against the types the function defines,
--- and return any ambiguous types along with their replacement.
+-- and return any polymorphic types along with their replacement.
 checkArgs :: [Type] -> [AtomoVal] -> IOThrowsError [(Type, Type)]
 checkArgs ts' as' | length ts' /= length as' = throwError $ NumArgs (length ts') (length as')
                   | otherwise = checkArgs' ts' as' []
@@ -38,7 +38,7 @@ apply e (AIOFunc n) as   = (getIOPrim n) as
 apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
 
-                                 -- Check argument types and resolve ambiguous types
+                                 -- Check argument types and resolve polymorphic types
                                  unamb <- checkArgs (map fst ps) as
                                  let returnType = findDiff t unamb
 

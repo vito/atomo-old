@@ -134,7 +134,7 @@ matchTypes (Name a) (Name b) = a == b || length a == 1 || length b == 1
 matchTypes (Type (a, as)) (Type (b, bs)) = matchTypes a b && (length as) == (length bs) && and (zipWith (matchTypes) as bs)
 matchTypes a b = False
 
--- Deep-replace a type with another type (used for replacing ambiguous types)
+-- Deep-replace a type with another type (used for replacing polymorphic types)
 swapType :: [Type] -> Type -> Type-> [Type]
 swapType ts t n = swapType' ts [] t n
                   where
