@@ -1,0 +1,12 @@
+data list(a): null | cons(a, list(a))
+
+list(int) a = cons(1, cons(2, null))
+[int] b = [1, 2]
+
+list(list(int)) c = cons(cons(1, cons(2, null)), null)
+[[int]] d = [[1, 2]]
+
+dump(a, b, c, d)
+print(type(a), type(b), type(c), type(d))
+
+dump(cons(1, cons(2, cons("three", null)))) -- ERROR!
