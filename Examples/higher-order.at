@@ -1,0 +1,11 @@
+string showVal(a val):
+    show(val) -- TODO: This has to be done weirdly like this
+              --       because "show" is not defined as a variable
+              --       in the scope, but rather a primitive function
+              --       identified by the parser. Should be fixed once
+              --       we get a prelude, but the demo still stands.
+
+b apply(b f(a) fun, a arg):
+    fun(arg)
+
+print(apply(showVal, "Hello, world!"))
