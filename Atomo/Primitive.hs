@@ -4,13 +4,19 @@ import Atomo.Internals
 
 -- Boolean
 primBool :: AtomoVal
-primBool = AData "bool" [] [("true", []), ("false", [])]
+primBool = AData "bool" [] [primTrueC, primFalseC]
+
+primTrueC :: AtomoVal
+primTrueC = AConstruct "true" [] primBool
+
+primFalseC :: AtomoVal
+primFalseC = AConstruct "false" [] primBool
 
 primTrue :: AtomoVal
-primTrue = AConstruct "true" [] primBool
+primTrue = AValue "true" [] primBool
 
 primFalse :: AtomoVal
-primFalse = AConstruct "false" [] primBool
+primFalse = AValue "false" [] primBool
 
 primNot :: AtomoVal -> AtomoVal
 primNot (AConstruct "true"  _ _) = primFalse
@@ -21,53 +27,66 @@ boolToPrim True  = primTrue
 boolToPrim False = primFalse
 
 -- Integers
+isAInt :: AtomoVal -> Bool
+isAInt (AValue "int" _ _) = True
+isAInt _ = False
+
 primInt :: AtomoVal
-primInt = AData "int" [] [("int", [Name "a"])]
+primInt = AData "int" [] [primIntC]
+
+primIntC :: AtomoVal
+primIntC = AConstruct "int" [Name "a"] primInt
 
 intToPrim :: Integer -> AtomoVal
-intToPrim i = AConstruct "int" [AInt i] primInt
+intToPrim i = AValue "int" [AInt i] primInt
 
-primToInt :: AtomoVal -> Integer
-primToInt (AInt i) = i
-primToInt (AConstruct "int" [AInt i] _) = i
+{- primToInt :: AtomoVal -> Integer -}
+{- primToInt (AInt i) = i -}
+{- primToInt (AConstruct "int" [AInt i] _) = i -}
 
 -- Doubles
+isADouble :: AtomoVal -> Bool
+isADouble (AValue "double" _ _) = True
+isADouble _ = False
+
 primDouble :: AtomoVal
-primDouble = AData "double" [] [("double", [Name "a"])]
+primDouble = AData "double" [] [primDoubleC]
+
+primDoubleC :: AtomoVal
+primDoubleC = AConstruct "double" [Name "a"] primDouble
 
 doubleToPrim :: Double -> AtomoVal
-doubleToPrim d = AConstruct "double" [ADouble d] primDouble
+doubleToPrim d = AValue "double" [ADouble d] primDouble
 
-primToDouble :: AtomoVal -> Double
-primToDouble (ADouble d) = d
-primToDouble (AConstruct "double" [ADouble d] _) = d
+{- primToDouble :: AtomoVal -> Double -}
+{- primToDouble (ADouble d) = d -}
+{- primToDouble (AConstruct "double" [ADouble d] _) = d -}
 
 -- Characters
+isAChar :: AtomoVal -> Bool
+isAChar (AValue "char" _ _) = True
+isAChar _ = False
+
 primChar :: AtomoVal
-primChar = AData "char" [] [("char", [Name "a"])]
+primChar = AData "char" [] [primCharC]
+
+primCharC :: AtomoVal
+primCharC = AConstruct "char" [Name "a"] primChar
 
 charToPrim :: Char -> AtomoVal
-charToPrim c = AConstruct "char" [AChar c] primChar
+charToPrim c = AValue "char" [AChar c] primChar
 
-primToChar :: AtomoVal -> Char
-primToChar (AChar c) = c
-primToChar (AConstruct "char" [AChar c] _) = c
+{- primToChar :: AtomoVal -> Char -}
+{- primToChar (AChar c) = c -}
+{- primToChar (AConstruct "char" [AChar c] _) = c -}
 
 -- Primitive functions
 primSub, primAdd, primMul, primDiv :: AtomoVal -> AtomoVal -> AtomoVal
-primSub (AConstruct "int" [AInt a] _) (AConstruct "int" [AInt b] _)
-        = intToPrim $ a - b
-primSub (AConstruct "double" [ADouble a] _) (AConstruct "double" [ADouble b] _)
-        = doubleToPrim $ a - b
-primAdd (AConstruct "int" [AInt a] _) (AConstruct "int" [AInt b] _)
-        = intToPrim $ a + b
-primAdd (AConstruct "double" [ADouble a] _) (AConstruct "double" [ADouble b] _)
-        = doubleToPrim $ a + b
-primMul (AConstruct "int" [AInt a] _) (AConstruct "int" [AInt b] _)
-        = intToPrim $ a * b
-primMul (AConstruct "double" [ADouble a] _) (AConstruct "double" [ADouble b] _)
-        = doubleToPrim $ a * b
-primDiv (AConstruct "int" [AInt a] _) (AConstruct "int" [AInt b] _)
-        = intToPrim $ a `div` b
-primDiv (AConstruct "double" [ADouble a] _) (AConstruct "double" [ADouble b] _)
-        = doubleToPrim $ a / b
+primSub a b | isAInt a && isAInt b = intToPrim $ (fromAInt a) - (fromAInt b)
+            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) - (fromADouble b)
+primAdd a b | isAInt a && isAInt b = intToPrim $ fromAInt a + fromAInt b
+            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) + (fromADouble b)
+primMul a b | isAInt a && isAInt b = intToPrim $ fromAInt a * fromAInt b
+            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) * (fromADouble b)
+primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
+            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) / (fromADouble b)

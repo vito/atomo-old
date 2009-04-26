@@ -5,6 +5,7 @@ import Atomo.Env
 import Atomo.Error
 import Atomo.Internals
 import Atomo.Parser
+import Atomo.Typecheck
 
 import Control.Monad
 import Control.Monad.Error
@@ -16,20 +17,10 @@ import System.Console.Haskeline
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 primIf e (AConstruct "true" _ _)  a _ = eval e a
 primIf e (AConstruct "false" _ _) _ b = eval e b
-primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") (getType a)
+primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") (Name "TODO")
 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
-
--- Check the arguments against the types the function defines,
--- and return any polymorphic types along with their replacement.
-checkArgs :: [Type] -> [AtomoVal] -> IOThrowsError [(Type, Type)]
-checkArgs ts' as' | length ts' /= length as' = throwError $ NumArgs (length ts') (length as')
-                  | otherwise = checkArgs' ts' as' []
-                    where
-                        checkArgs' [] [] rs = return rs
-                        checkArgs' (t:ts) (a:as) rs | checkType a t = checkArgs' (swapType ts t (getType a)) as ((t, getType a) : rs)
-                                                    | otherwise = throwError $ TypeMismatch t (getType a)
 
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -37,10 +28,6 @@ apply e (APrimFunc n) as = liftThrows $ (getPrim n) as
 apply e (AIOFunc n) as   = (getIOPrim n) as
 apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                  patternMatch new (map snd ps) as
-
-                                 -- Check argument types and resolve polymorphic types
-                                 unamb <- checkArgs (map fst ps) as
-                                 let returnType = findDiff t unamb
 
                                  -- Set local variables for arguments
                                  let env = (globalScope e, new)
@@ -52,22 +39,18 @@ apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                                    AReturn r -> eval env r
                                                    a -> return a)
 
-                                 if checkType returned returnType
-                                    then return returned
-                                    else throwError $ TypeMismatch returnType (getType returned)
+                                 return returned
                               where
                                   findDiff d [] = d
                                   findDiff d ((f, r):ts) | f == d = r
                                                          | otherwise = findDiff d ts
-apply e (AConstruct n [] d@(AData _ _ ps)) as = do case lookup n ps of
-                                                        Just ts -> do checkArgs ts as
-                                                                      return $ AConstruct n as d
-                                                        Nothing -> throwError $ Default "Constructor/Data mismatch."
+apply e (AConstruct n _ d) as = return $ AValue n as d
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e v@(AInt _)           = return v
 eval e v@(AChar _)          = return v
 eval e v@(ADouble _)        = return v
+eval e v@(AValue _ _ _)     = return v
 eval e v@(APrimFunc _)      = return v
 eval e v@(AIOFunc _)        = return v
 eval e v@(AString _)        = return v
@@ -76,33 +59,23 @@ eval e v@(AReturn _)        = return v
 eval e v@(AFunc _ n _ _)    = setGlobal e n v
 eval e (ATuple vs)     = do tuple <- mapM (\(t, v) -> do val <- eval e v
                                                          return (t, val)) vs
-                            case verifyTuple tuple of
-                                 Nothing -> return $ ATuple tuple
-                                 Just (expect, found) -> throwError $ TypeMismatch expect found
+                            return $ ATuple tuple
 eval e (AHash vs)      = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
                                                              return (n, (t, val))) vs
-                            case verifyHash hash of
-                                 Nothing -> return $ AHash hash
-                                 Just (expect, found) -> throwError $ TypeMismatch expect found
+                            return $ AHash hash
 eval e (AList as)      = do list <- mapM (eval e) as
-                            case verifyList list of
-                                 Nothing -> return $ AList list
-                                 Just (expect, found) -> throwError $ TypeMismatch expect found
+                            return $ AList list
 eval e (AVariable s)   = getAny e s
 eval e (ADefine t s v) = do val <- eval e v
-                            if checkType val t
-                               then setLocal e s val
-                               else throwError $ TypeMismatch t (getType val)
+                            setLocal e s val
 eval e (AAssign s v)   = do val <- eval e v
                             orig <- getAny e s
-                            if checkType val (getType orig)
-                               then setLocal e s val
-                               else throwError $ TypeMismatch (getType orig) (getType val)
+                            setLocal e s val
 eval e (ACall f as)    = do fun <- eval e f
                             args <- mapM (eval e) as
                             apply e fun args
 eval e (ABlock es)     = evalAll e es
-eval e v@(AData s _ cs)  = mapM_ (\c -> setGlobal e (fst c) (AConstruct (fst c) [] v)) cs >> return ANone
+eval e v@(AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e v               = throwError $ Default $ "Can't evaluate: " ++ show v
@@ -125,7 +98,7 @@ evalAndPrint e s = evalString e s >>= putStrLn
 
 -- Execute a string
 execute :: Env -> String -> IO ()
-execute e s = do let parsed = readExprs s
+execute e s = do let parsed = checkAST $ readExprs s
                  case parsed of -- Catch parse errors
                       Left err -> print err
                       Right v -> do res <- runErrorT (evalAll e (extractValue parsed))

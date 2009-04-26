@@ -5,6 +5,7 @@ module Atomo.Parser where
 import Atomo.Error
 import Atomo.Internals
 import Atomo.Primitive
+import Atomo.Typecheck (getType)
 
 import Control.Monad
 import Control.Monad.Error
@@ -220,10 +221,10 @@ aFunc = do func <- aFuncHeader
         <?> "function"
 
 -- Data constructor
-aConstructor :: Parser (String, [Type])
+aConstructor :: Parser (AtomoVal -> AtomoVal)
 aConstructor = do name <- identifier
                   params <- parens (commaSep aType) <|> return []
-                  return $ (name, params)
+                  return $ AConstruct name params
 
 -- New data declaration
 aData :: Parser AtomoVal
@@ -234,7 +235,8 @@ aData = do reserved "data"
            optional newline
            whiteSpace
            constructors <- aConstructor `sepBy` (symbol "|")
-           return $ AData name params constructors
+           let d = AData name params (map ($ d) constructors)
+           return d
 
 -- If/If-Else
 aIf :: Parser AtomoVal
@@ -408,7 +410,7 @@ primFuncs = [ ("++", concatFunc)
 
                 lessFunc [a, b] = return $ boolToPrim $ (<) (fromAInt a) (fromAInt b)
 
-                typeFunc [a] = return . toAString . prettyType $ getType a
+                typeFunc [a] = return . toAString . prettyType $ getType ([], []) a -- TODO: This function might be removed.
 
 -- Primitive I/O functions
 ioPrims :: [(String, [AtomoVal] -> IOThrowsError AtomoVal)]
@@ -441,7 +443,7 @@ readExpr = readOrThrow aExpr
 
 -- Read all expressions in a string
 readExprs :: String -> ThrowsError [AtomoVal]
-readExprs = readOrThrow (many $ do whiteSpace
-                                   x <- aExpr
-                                   optional newline <|> eof
-                                   return x)
+readExprs es = readOrThrow (many $ do whiteSpace
+                                      x <- aExpr
+                                      optional newline <|> eof
+                                      return x) es
