@@ -150,19 +150,25 @@ aAttribute = do target <- aReference
                 dot
                 attribute <- identifier
                 return $ AAttribute (target, attribute)
+
+-- Type, excluding functions
+aSimpleType :: Parser Type
+aSimpleType = try (do name <- identifier
+                      notFollowedBy (char '(')
+                      return (Name name))
+          <|> try (do con <- identifier
+                      args <- parens (commaSep aType)
+                      return $ Type (Name con, args))
+          <|> try (do theType <- brackets aType
+                      return $ Type (Name "[]", [theType]))
+
 -- Type
 aType :: Parser Type
-aType = try (do ret <- (identifier >>= return . Name) <|> parens aType
+aType = try (do ret <- aSimpleType <|> parens aType
                 anyChar
                 args <- parens (commaSep aType)
                 return $ Type (ret, args))
-    <|> try (do con <- identifier
-                args <- parens (commaSep aType)
-                return $ Type (Name con, args))
-    <|> try (do theType <- brackets aType
-                return $ Type (Name "[]", [theType]))
-    <|> (identifier >>= return . Name)
-
+    <|> aSimpleType
         <?> "type declaration"
 
 aPattern :: Parser String -- TODO: Finish this

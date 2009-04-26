@@ -15,9 +15,9 @@ import System.Console.Haskeline
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
-primIf e (AConstruct "true" _ _)  a _ = eval e a
-primIf e (AConstruct "false" _ _) _ b = eval e b
-primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") (Name "TODO")
+primIf e (AValue "true" _ _)  a _ = eval e a
+primIf e (AValue "false" _ _) _ b = eval e b
+primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") (Name (pretty a))
 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
@@ -40,10 +40,6 @@ apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
                                                    a -> return a)
 
                                  return returned
-                              where
-                                  findDiff d [] = d
-                                  findDiff d ((f, r):ts) | f == d = r
-                                                         | otherwise = findDiff d ts
 apply e (AConstruct n _ d) as = return $ AValue n as d
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
@@ -75,7 +71,7 @@ eval e (ACall f as)    = do fun <- eval e f
                             args <- mapM (eval e) as
                             apply e fun args
 eval e (ABlock es)     = evalAll e es
-eval e v@(AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
+eval e (AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e v               = throwError $ Default $ "Can't evaluate: " ++ show v

@@ -16,17 +16,17 @@ data AtomoVal = AInt Integer
               | AList [AtomoVal]
               | ATuple [(Type, AtomoVal)]
               | AHash [(String, (Type, AtomoVal))]
+              | AString AtomoVal -- AString == AList of AChars
               | AVariable String
               | AClass String [(String, AtomoVal)] -- Name [(Attribute/Function Name, Value)]
               | AAttribute (AtomoVal, String)
+              | AObject String [AtomoVal]
               | ADefine Type String AtomoVal
               | AAssign String AtomoVal
-              | AObject String [AtomoVal]
               | APrimFunc String
               | AIOFunc String
               | AFunc Type String [(Type, String)] AtomoVal
               | ACall AtomoVal [AtomoVal]
-              | AString AtomoVal -- AString == AList of AChars
               | ABlock [AtomoVal]
               | AData String [Type] [AtomoVal]
               | AConstruct String [Type] AtomoVal
@@ -34,7 +34,34 @@ data AtomoVal = AInt Integer
               | AIf AtomoVal AtomoVal AtomoVal
               | AReturn AtomoVal
               | ANone
-              deriving (Show, Eq)
+              deriving (Eq)
+
+instance Show AtomoVal where
+    show (AInt v) = "AInt " ++ show v
+    show (AChar v) = "AChar " ++ show v
+    show (ADouble v) = "ADouble " ++ show v
+    show (AList v) = "AList " ++ show v
+    show (ATuple v) = "ATuple " ++ show v
+    show (AHash v) = "AHash " ++ show v
+    show (AString v) = "AString " ++ show v
+    show (AVariable v) = "AVariable " ++ show v
+    show (AClass n v) = "AClass " ++ show n ++ " " ++ show v
+    show (AAttribute v) = "AAttribute " ++ show v
+    show (AObject n v) = "AObject " ++ show n ++ " " ++ show v
+    show (ADefine t n v) = "ADefine " ++ show t ++ " " ++ show n ++ " " ++ show v
+    show (AAssign n v) = "AAssign " ++ show n ++ " " ++ show v
+    show (APrimFunc n) = "APrimFunc " ++ show n
+    show (AIOFunc n) = "AIOFunc " ++ show n
+    show (AFunc t n ps b) = "AFunc (" ++ show t ++ ") " ++ show n ++ " " ++ show ps ++ " (" ++ show b ++ ")"
+    show (ACall t as) = "ACall (" ++ show t ++ ") " ++ show as
+    show (ABlock vs) = "ABlock " ++ show vs
+    show (AData n ps cs) = "AData " ++ show n ++ " " ++ show ps ++ " " ++ show cs
+    show (AConstruct n ps d) = "AConstruct " ++ show n ++ " " ++ show ps ++ " (AData ...)"
+    show (AValue n as d) = "AValue " ++ show n ++ " " ++ show as ++ " (AData ...)"
+    show (AIf c t f) = "AIf (" ++ show c ++ ") (" ++ show t ++ ") (" ++ show f ++ ")"
+    show (AReturn v) = "AReturn " ++ show v
+    show (ANone) = "ANone"
+
 
 fromAInt (AInt i) = i
 fromAInt (AValue "int" [AInt i] _) = i
@@ -86,10 +113,10 @@ pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ _ v)  = pretty v
 pretty (AAssign _ v)    = pretty v
 pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
-pretty (APrimFunc n)    = "<Function Primitive (" ++ n ++ ")>"
-pretty (AIOFunc n)      = "<IO Primitive (" ++ n ++ ")>"
-pretty (AFunc _ n _ _)  = "<Function (" ++ n ++ ")>"
-pretty (ACall f as)     = "<Call (" ++ pretty f ++ ") (" ++ intercalate ", " (map pretty as) ++ ")>"
+pretty (APrimFunc n)    = "<Function Primitive (`" ++ n ++ "')>"
+pretty (AIOFunc n)      = "<IO Primitive (`" ++ n ++ "')>"
+pretty (AFunc _ n _ _)  = "<Function (`" ++ n ++ "')>"
+pretty (ACall f as)     = "<Call (`" ++ pretty f ++ "') (`" ++ intercalate "', `" (map pretty as) ++ "')>"
 pretty s@(AString _)    = show $ fromAString s
 pretty (ABlock es)      = intercalate "\n" $ map pretty es
 pretty (AData s as _)   = prettyType $ Type (Name s, as)

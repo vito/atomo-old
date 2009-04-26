@@ -128,7 +128,6 @@ checkExpr e (AList as) = verifyList e as >>* Pass e
 checkExpr e (ATuple as) = verifyTuple e as >>* Pass e
 checkExpr e (AHash as) = verifyHash e as >>* Pass e
 checkExpr e (ADefine t _ v) = checkExpr e v >>* checkType e (getType e v) t >>* Pass e
-{- checkExpr (AConstruct n  -}
 checkExpr e (AData _ as cs) = Pass newEnv
                               where
                                   newGlobal = map (\c -> (fromAConstruct c, getType e c)) cs ++ fst e
@@ -138,6 +137,10 @@ checkExpr e (ACall (AIOFunc "dump") as) = checkAll e as
 checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
                                             Just (Type (f, ts)) -> checkArgs e ts (map (getType e) as)
                                             Nothing -> Pass e
+checkExpr e (AIf c t f) = checkType e (getType e c) (Name "true") >>* checkExpr e t >>* checkExpr e f
+checkExpr e (ABlock as) = checkAll e as
+checkExpr e (AFunc t n ps b) = checkExpr e b -- TODO
+{- checkExpr e a = error (show a) -}
 checkExpr e _ = Pass e
 
 checkAll :: CheckEnv -> [AtomoVal] -> TypeCheck
