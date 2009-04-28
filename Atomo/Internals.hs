@@ -43,7 +43,7 @@ instance Show AtomoVal where
     show (AList v) = "AList " ++ show v
     show (ATuple v) = "ATuple " ++ show v
     show (AHash v) = "AHash " ++ show v
-    show (AString v) = "AString " ++ show v
+    show (AString v) = "AString (" ++ show v ++ ")"
     show (AVariable v) = "AVariable " ++ show v
     show (AClass n v) = "AClass " ++ show n ++ " " ++ show v
     show (AAttribute v) = "AAttribute " ++ show v
@@ -95,6 +95,35 @@ instance Show AtomoError where
 instance Error AtomoError where
     noMsg = Default "An error has occurred"
     strMsg = Default
+
+getType :: AtomoVal -> Type
+getType (ADouble _) = Name "double"
+getType (AList []) = Name "[]"
+getType (AList as) = Type (Name "[]", [getType (head as)])
+getType (ATuple _) = Name "tuple"
+getType (AHash _) = Name "hash"
+getType (AString _) = Name "string" -- todo: make type aliases work
+getType (AConstruct _ [] d@(AData n [] _)) = getType d
+getType (AConstruct _ ts d@(AData n ps _)) = Type (getType d, ts)
+getType (AData n [] _) = Name n
+getType (AData n as _) = Type (Name n, as)
+getType (AFunc t _ as _) = Type (t, map fst as)
+getType (AReturn r) = getType r
+getType (ADefine _ _ v) = getType v
+getType (AValue _ _ d@(AData n [] _)) = getType d
+getType (AValue c as (AData n ps cs)) = Type (Name n, args)
+                                        where
+                                            args = map (\ a -> case lookup a values of
+                                                                    Just v -> getType v
+                                                                    Nothing -> a) ps
+                                            values = zip (argNames cs) as
+                                            argNames [] = []
+                                            argNames ((AConstruct n v _):ps) | n == c = v
+                                                                | otherwise = argNames ps
+getType a = error ("Cannot get type of `" ++ pretty a ++ "'")
+
+getReturnType (AFunc t _ _ _) = t
+getReturnType a = getType a
 
 pretty :: AtomoVal -> String
 pretty (AInt int)       = show int

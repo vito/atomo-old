@@ -5,7 +5,6 @@ module Atomo.Parser where
 import Atomo.Error
 import Atomo.Internals
 import Atomo.Primitive
-import Atomo.Typecheck (getType)
 
 import Control.Monad
 import Control.Monad.Error
@@ -349,6 +348,7 @@ aPrimInfix = do val <- buildExpressionParser table targets
                          , [ op "==" equalityFunc AssocNone
                            , op "/=" inequalityFunc AssocNone
                            , op "<" lessFunc AssocNone
+                           , op ">" greaterFunc AssocNone
                            ]
                          ]
                          where
@@ -361,6 +361,7 @@ aPrimInfix = do val <- buildExpressionParser table targets
                              equalityFunc a b = ACall (APrimFunc "==") [a, b]
                              inequalityFunc a b = ACall (APrimFunc "/=") [a, b]
                              lessFunc a b = ACall (APrimFunc "<") [a, b]
+                             greaterFunc a b = ACall (APrimFunc ">") [a, b]
 
                  targets = do val <- parens aExpr
                                  <|> try aVar
@@ -416,7 +417,7 @@ primFuncs = [ ("++", concatFunc)
 
                 lessFunc [a, b] = return $ boolToPrim $ (<) (fromAInt a) (fromAInt b)
 
-                typeFunc [a] = return . toAString . prettyType $ getType ([], []) a -- TODO: This function might be removed.
+                typeFunc [a] = return . toAString . prettyType $ getType a
 
 -- Primitive I/O functions
 ioPrims :: [(String, [AtomoVal] -> IOThrowsError AtomoVal)]
