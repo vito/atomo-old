@@ -48,9 +48,9 @@ instance Show AtomoVal where
     show (AClass n v) = "AClass " ++ show n ++ " " ++ show v
     show (AAttribute v) = "AAttribute " ++ show v
     show (AObject n v) = "AObject " ++ show n ++ " " ++ show v
-    show (ADefine t n v) = "ADefine " ++ show t ++ " " ++ show n ++ " " ++ show v
+    show (ADefine t n v) = "ADefine (" ++ show t ++ ") " ++ show n ++ " (" ++ show v ++ ")"
     show (AAssign n v) = "AAssign " ++ show n ++ " " ++ show v
-    show (APrimFunc t n ps) = "APrimFunc (" ++ show n ++ ") " ++ show n ++ " " ++ show ps
+    show (APrimFunc t n ps) = "APrimFunc (" ++ show t ++ ") " ++ show n ++ " " ++ show ps
     show (AIOFunc t n ps) = "AIOFunc (" ++ show n ++ ") " ++ show n ++ " " ++ show ps
     show (AFunc t n ps b) = "AFunc (" ++ show t ++ ") " ++ show n ++ " " ++ show ps ++ " (" ++ show b ++ ")"
     show (ACall t as) = "ACall (" ++ show t ++ ") " ++ show as

@@ -102,7 +102,7 @@ checkExpr :: CheckEnv -> AtomoVal -> TypeCheck
 checkExpr e (AList as) = verifyList e as
 checkExpr e (ATuple as) = verifyTuple e as
 checkExpr e (AHash as) = verifyHash e as
-checkExpr e (ADefine t n v) = checkExpr e v >>* checkType e (exprType e v) t >>* Pass (newEnv, t)
+checkExpr e (ADefine t n v) = checkExpr e v >>* checkType e t (exprType e v) >>* Pass (newEnv, t)
                               where
                                   newEnv = (fst e, (n, t) : snd e)
 checkExpr e (AData n [] cs) = Pass (newEnv, Name n)
@@ -141,6 +141,7 @@ checkExpr e (AVariable n) = case getAnyType e n of
                                  Nothing -> Undefined n
 checkExpr e (AValue n as d) = Pass (e, exprType e d)
 checkExpr e (AString as) = Pass (e, Name "string")
+checkExpr e (AConstruct n [] (AData d [] _)) = Pass (e, Name d)
 checkExpr e (AConstruct n [] (AData d ps _)) = Pass (e, Type (Name d, ps))
 checkExpr e (AConstruct n as (AData d ps _)) = Pass (e, Type (Type (Name d, ps), as))
 checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.

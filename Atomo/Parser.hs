@@ -413,6 +413,7 @@ primFuncs = [ ("++", (APrimFunc (Type (Name "[]", [Name "a"])) "++" [Type (Name 
                 equalityFunc [(AVariable a), (AVariable b)] = return $ boolToPrim (a == b)
                 equalityFunc [(ADefine _ _ a), (ADefine _ _ b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AAssign _ a), (AAssign _ b)] = return $ boolToPrim (a == b)
+                equalityFunc [(AData a as _), (AData b bs _)] = return $ boolToPrim (a == b && as == bs)
                 equalityFunc [(AValue a as _), (AValue b bs _)] = return $ boolToPrim (a == b && as == bs)
                 equalityFunc [(AConstruct a as _), (AConstruct b bs _)] = return $ boolToPrim (a == b && as == bs)
                 equalityFunc [a, b] = return $ boolToPrim (a == b)
