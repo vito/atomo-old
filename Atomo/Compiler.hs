@@ -12,7 +12,7 @@ import LLVM.Core
 import LLVM.ExecutionEngine
 
 genPrint :: AtomoVal -> CodeGenModule (Function (IO ()))
-genPrint (ACall (AIOFunc "print") [AString s]) = do
+genPrint (ACall (AIOFunc _ "print" _) [AString s]) = do
     puts <- newNamedFunction ExternalLinkage "puts" :: TFunction (Ptr Word8 -> IO Word32)
     str <- createStringNul (fromAString s)
 
@@ -20,10 +20,10 @@ genPrint (ACall (AIOFunc "print") [AString s]) = do
         tmp <- getElementPtr str (0 :: Word32, (0 :: Word32, ()))
         call puts tmp
         ret ()
-genPrint (ACall (AIOFunc "dump") [s]) = genPrint printCall
+genPrint (ACall (AIOFunc _ "dump" _) [s]) = genPrint printCall
                                           where
                                               printCall = ACall printFunc targets
-                                              printFunc = AIOFunc "print"
+                                              printFunc = AIOFunc (Name "void") "print" [Name "string"]
                                               targets = [(toAString (pretty s))]
 
 expr = "dump(50.0)"

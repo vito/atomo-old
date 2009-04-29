@@ -113,9 +113,8 @@ checkExpr e (AData n as cs) = Pass (newEnv, Type (Name n, as))
                               where
                                   newGlobal = map (\c -> (fromAConstruct c, exprType e c)) cs ++ fst e
                                   newEnv = (newGlobal, snd e)
-checkExpr e (ACall (AIOFunc "print") as) = allType e (Name "string") (map (exprType e) as)
-checkExpr e (ACall (AIOFunc "dump") as) = checkAll e as
-checkExpr e (ACall (APrimFunc "<") as) = allType e (Name "int") (map (exprType e) as) >>* Pass (e, Name "bool")
+checkExpr e (ACall (AIOFunc t n ps) as) = checkArgs e ps (map (exprType e) as) >>* Pass (e, t)
+checkExpr e (ACall (APrimFunc t n ps) as) = checkArgs e ps (map (exprType e) as) >>* Pass (e, t)
 checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
                                             Just (Type (f, ts)) -> case checkArgs e ts (map (exprType e) as) of
                                                                         Poly (e, rs) -> Pass (e, findDiff f rs)

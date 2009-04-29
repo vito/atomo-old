@@ -323,11 +323,13 @@ aCall = do name <- aReference <|> aAttribute
 
 -- Call to predefined primitive function
 aPrimCall :: Parser AtomoVal
-aPrimCall = do name <- choice (map (string . fst) primFuncs) <|> choice (map (string . fst) ioPrims)
+aPrimCall = do name <- choice (map (string . fst) primFuncs)
+                   <|> choice (map (string . fst) ioPrims)
                params <- aParams
                case lookup name primFuncs of
-                  Just _ -> return $ ACall (APrimFunc name) params
-                  Nothing -> return $ ACall (AIOFunc name) params
+                  Just (a, _) -> return $ ACall a params
+                  Nothing -> case lookup name ioPrims of
+                                  Just (a, _) -> return $ ACall a params
             <?> "primitive call"
 
 
@@ -353,15 +355,15 @@ aPrimInfix = do val <- buildExpressionParser table targets
                          ]
                          where
                              op s f assoc = Infix ((reservedOp s >> return f) <?> "operator") assoc
-                             mulFunc a b = ACall (APrimFunc "*") [a, b]
-                             divFunc a b = ACall (APrimFunc "/") [a, b]
-                             addFunc a b = ACall (APrimFunc "+") [a, b]
-                             subFunc a b = ACall (APrimFunc "-") [a, b]
-                             concatFunc a b = ACall (APrimFunc "++") [a, b]
-                             equalityFunc a b = ACall (APrimFunc "==") [a, b]
-                             inequalityFunc a b = ACall (APrimFunc "/=") [a, b]
-                             lessFunc a b = ACall (APrimFunc "<") [a, b]
-                             greaterFunc a b = ACall (APrimFunc ">") [a, b]
+                             mulFunc a b = ACall (getAPrim "*") [a, b]
+                             divFunc a b = ACall (getAPrim "/") [a, b]
+                             addFunc a b = ACall (getAPrim "+") [a, b]
+                             subFunc a b = ACall (getAPrim "-") [a, b]
+                             concatFunc a b = ACall (getAPrim "++") [a, b]
+                             equalityFunc a b = ACall (getAPrim "==") [a, b]
+                             inequalityFunc a b = ACall (getAPrim "/=") [a, b]
+                             lessFunc a b = ACall (getAPrim "<") [a, b]
+                             greaterFunc a b = ACall (getAPrim ">") [a, b]
 
                  targets = do val <- parens aExpr
                                  <|> try aVar
@@ -381,17 +383,17 @@ aPrimInfix = do val <- buildExpressionParser table targets
                               return val
 
 -- Primitive functions
-primFuncs :: [(String, [AtomoVal] -> ThrowsError AtomoVal)]
-primFuncs = [ ("++", concatFunc)
-            , ("==", equalityFunc)
-            , ("/=", inequalityFunc)
-            , ("+", addFunc)
-            , ("-", subFunc)
-            , ("*", mulFunc)
-            , ("/", divFunc)
-            , ("<", lessFunc) -- WE NEED MORE FUNK
-            , ("show", showFunc)
-            , ("type", typeFunc)
+primFuncs :: [(String, (AtomoVal, [AtomoVal] -> ThrowsError AtomoVal))]
+primFuncs = [ ("++", (APrimFunc (Type (Name "[]", [Name "a"])) "++" [Type (Name "[]", [Name "a"]), Type (Name "[]", [Name "a"])], concatFunc))
+            , ("==", (APrimFunc (Name "bool") "==" [Name "a", Name "a"], equalityFunc))
+            , ("/=", (APrimFunc (Name "bool") "/=" [Name "a", Name "a"], inequalityFunc))
+            , ("+", (APrimFunc (Name "int") "+" [Name "int", Name "int"], addFunc))
+            , ("-", (APrimFunc (Name "int") "-" [Name "int", Name "int"], subFunc))
+            , ("*", (APrimFunc (Name "int") "*" [Name "int", Name "int"], mulFunc))
+            , ("/", (APrimFunc (Name "int") "/" [Name "int", Name "int"], divFunc))
+            , ("<", (APrimFunc (Name "bool") "<" [Name "int", Name "int"], lessFunc))
+            , ("show", (APrimFunc (Name "string") "show" [Name "a"], showFunc))
+            , ("type", (APrimFunc (Name "string") "show" [Name "a"], typeFunc))
             ]
             where
                 addFunc [a, b] = return $ primAdd a b
@@ -411,6 +413,8 @@ primFuncs = [ ("++", concatFunc)
                 equalityFunc [(AVariable a), (AVariable b)] = return $ boolToPrim (a == b)
                 equalityFunc [(ADefine _ _ a), (ADefine _ _ b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AAssign _ a), (AAssign _ b)] = return $ boolToPrim (a == b)
+                equalityFunc [(AValue a as _), (AValue b bs _)] = return $ boolToPrim (a == b && as == bs)
+                equalityFunc [(AConstruct a as _), (AConstruct b bs _)] = return $ boolToPrim (a == b && as == bs)
                 equalityFunc [a, b] = return $ boolToPrim (a == b)
 
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
@@ -420,19 +424,25 @@ primFuncs = [ ("++", concatFunc)
                 typeFunc [a] = return . toAString . prettyType $ getType a
 
 -- Primitive I/O functions
-ioPrims :: [(String, [AtomoVal] -> IOThrowsError AtomoVal)]
-ioPrims = [ ("print", printFunc)
-          , ("dump", dumpFunc)
+ioPrims :: [(String, (AtomoVal, [AtomoVal] -> IOThrowsError AtomoVal))]
+ioPrims = [ ("print", (AIOFunc (Name "void") "print" [Name "string"], printFunc))
+          , ("dump", (AIOFunc (Name "void") "dump" [Name "a"], dumpFunc))
           ]
           where
               printFunc xs = liftIO $ mapM_ (putStrLn . fromAString) xs >> return ANone
               dumpFunc xs = liftIO $ mapM_ (putStrLn . pretty) xs >> return ANone
 
+getAIOPrim :: String -> AtomoVal
+getAIOPrim = fst . fromJust . (flip lookup ioPrims)
+
 getIOPrim :: String -> ([AtomoVal] -> IOThrowsError AtomoVal)
-getIOPrim = fromJust . (flip lookup ioPrims)
+getIOPrim = snd . fromJust . (flip lookup ioPrims)
+
+getAPrim :: String -> AtomoVal
+getAPrim = fst . fromJust . (flip lookup primFuncs)
 
 getPrim :: String -> ([AtomoVal] -> ThrowsError AtomoVal)
-getPrim = fromJust . (flip lookup primFuncs)
+getPrim = snd . fromJust . (flip lookup primFuncs)
 
 
 -- Parse a string or throw any errors

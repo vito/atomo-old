@@ -17,29 +17,28 @@ import System.Console.Haskeline
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 primIf e (AValue "true" _ _)  a _ = eval e a
 primIf e (AValue "false" _ _) _ b = eval e b
-primIf e a _ _                        = throwError $ TypeMismatch (Name "bool") (Name (pretty a))
 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()
 
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
-apply e (APrimFunc n) as = liftThrows $ (getPrim n) as
-apply e (AIOFunc n) as   = (getIOPrim n) as
-apply e (AFunc t _ ps b) as = do new <- liftIO $ nullScope
-                                 patternMatch new (map snd ps) as
+apply e (APrimFunc _ n _) as = liftThrows $ (getPrim n) as
+apply e (AIOFunc _ n _) as   = (getIOPrim n) as
+apply e (AFunc t _ ps b) as  = do new <- liftIO $ nullScope
+                                  patternMatch new (map snd ps) as
 
-                                 -- Set local variables for arguments
-                                 let env = (globalScope e, new)
-                                 zipWithM_ (setLocal env) (map snd ps) as
+                                  -- Set local variables for arguments
+                                  let env = (globalScope e, new)
+                                  zipWithM_ (setLocal env) (map snd ps) as
 
-                                 -- Evaluate the function
-                                 res <- eval env b
-                                 returned <- (case res of
-                                                   AReturn r -> eval env r
-                                                   a -> return a)
+                                  -- Evaluate the function
+                                  res <- eval env b
+                                  returned <- (case res of
+                                                    AReturn r -> eval env r
+                                                    a -> return a)
 
-                                 return returned
+                                  return returned
 apply e (AConstruct n _ d) as = return $ AValue n as d
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
@@ -47,8 +46,8 @@ eval e v@(AInt _)           = return v
 eval e v@(AChar _)          = return v
 eval e v@(ADouble _)        = return v
 eval e v@(AValue _ _ _)     = return v
-eval e v@(APrimFunc _)      = return v
-eval e v@(AIOFunc _)        = return v
+eval e v@(APrimFunc _ _ _)  = return v
+eval e v@(AIOFunc _ _ _)    = return v
 eval e v@(AString _)        = return v
 eval e v@(AConstruct _ _ _) = return v
 eval e v@(AReturn _)        = return v

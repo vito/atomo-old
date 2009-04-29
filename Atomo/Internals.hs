@@ -23,8 +23,8 @@ data AtomoVal = AInt Integer
               | AObject String [AtomoVal]
               | ADefine Type String AtomoVal
               | AAssign String AtomoVal
-              | APrimFunc String
-              | AIOFunc String
+              | APrimFunc Type String [Type]
+              | AIOFunc Type String [Type]
               | AFunc Type String [(Type, String)] AtomoVal
               | ACall AtomoVal [AtomoVal]
               | ABlock [AtomoVal]
@@ -50,8 +50,8 @@ instance Show AtomoVal where
     show (AObject n v) = "AObject " ++ show n ++ " " ++ show v
     show (ADefine t n v) = "ADefine " ++ show t ++ " " ++ show n ++ " " ++ show v
     show (AAssign n v) = "AAssign " ++ show n ++ " " ++ show v
-    show (APrimFunc n) = "APrimFunc " ++ show n
-    show (AIOFunc n) = "AIOFunc " ++ show n
+    show (APrimFunc t n ps) = "APrimFunc (" ++ show n ++ ") " ++ show n ++ " " ++ show ps
+    show (AIOFunc t n ps) = "AIOFunc (" ++ show n ++ ") " ++ show n ++ " " ++ show ps
     show (AFunc t n ps b) = "AFunc (" ++ show t ++ ") " ++ show n ++ " " ++ show ps ++ " (" ++ show b ++ ")"
     show (ACall t as) = "ACall (" ++ show t ++ ") " ++ show as
     show (ABlock vs) = "ABlock " ++ show vs
@@ -142,8 +142,8 @@ pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ _ v)  = pretty v
 pretty (AAssign _ v)    = pretty v
 pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
-pretty (APrimFunc n)    = "<Function Primitive (`" ++ n ++ "')>"
-pretty (AIOFunc n)      = "<IO Primitive (`" ++ n ++ "')>"
+pretty (APrimFunc _ n _) = "<Function Primitive (`" ++ n ++ "')>"
+pretty (AIOFunc _ n _)  = "<IO Primitive (`" ++ n ++ "')>"
 pretty (AFunc _ n _ _)  = "<Function (`" ++ n ++ "')>"
 pretty (ACall f as)     = "<Call (`" ++ pretty f ++ "') (`" ++ intercalate "', `" (map pretty as) ++ "')>"
 pretty s@(AString _)    = show $ fromAString s

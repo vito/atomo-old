@@ -54,7 +54,7 @@ defineVal e s v = do defined <- liftIO $ isBound e s
                                          writeIORef e ((s, val) : env)
                                          return v
 
-getVal :: Scope -> String -> (IOThrowsError AtomoVal) -> IOThrowsError AtomoVal
+getVal :: Scope -> String -> IOThrowsError AtomoVal -> IOThrowsError AtomoVal
 getVal e s f = do env <- liftIO $ readIORef e
                   maybe f (liftIO . readIORef) (lookup s env)
 

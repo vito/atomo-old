@@ -82,11 +82,11 @@ charToPrim c = AValue "char" [AChar c] primChar
 
 -- Primitive functions
 primSub, primAdd, primMul, primDiv :: AtomoVal -> AtomoVal -> AtomoVal
-primSub a b | isAInt a && isAInt b = intToPrim $ (fromAInt a) - (fromAInt b)
-            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) - (fromADouble b)
+primSub a b | isAInt a && isAInt b = intToPrim $ fromAInt a - fromAInt b
+            | isADouble a && isADouble b = doubleToPrim $ fromADouble a - fromADouble b
 primAdd a b | isAInt a && isAInt b = intToPrim $ fromAInt a + fromAInt b
-            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) + (fromADouble b)
+            | isADouble a && isADouble b = doubleToPrim $ fromADouble a + fromADouble b
 primMul a b | isAInt a && isAInt b = intToPrim $ fromAInt a * fromAInt b
-            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) * (fromADouble b)
+            | isADouble a && isADouble b = doubleToPrim $ fromADouble a * fromADouble b
 primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
-            | isADouble a && isADouble b = doubleToPrim $ (fromADouble a) / (fromADouble b)
+            | isADouble a && isADouble b = doubleToPrim $ fromADouble a / fromADouble b
