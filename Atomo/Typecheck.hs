@@ -2,12 +2,13 @@ module Atomo.Typecheck where
 
 import Atomo.Error
 import Atomo.Internals
+import Atomo.Primitive (primFuncs, ioPrims)
 
 import Control.Monad.Error
 
 type CheckEnv = ([(String, Type)], [(String, Type)])
-data TypeCheck = Pass (CheckEnv, Type) | Poly (CheckEnv, [(Type, Type)]) | Mismatch (Type, Type) | Undefined String
-                 deriving (Eq, Show)
+data TypeCheck = Pass (CheckEnv, Type) | Poly (CheckEnv, [(Type, Type)]) | Error AtomoError
+                 deriving (Show)
 
 getAnyType :: CheckEnv -> String -> Maybe Type
 getAnyType e n = case lookup n (fst e) of
@@ -16,8 +17,7 @@ getAnyType e n = case lookup n (fst e) of
 
 Pass _ >>* k = k
 Poly _ >>* k = k
-Mismatch (f, r) >>* _ = Mismatch (f, r)
-Undefined n >>* _ = Undefined n
+Error e >>* _ = Error e
 
 -- todo: type aliases, and alias string to [char] in the prelude
 --       so we don't have to do this silliness
@@ -30,15 +30,15 @@ checkType e _ (Name [a]) = Pass (e, Name [a])
 checkType e (Name [a]) _ = Pass (e, Name [a])
 -- Constructors that take no argument should always match against their constructor
 checkType e (Type (Type (Name n, as), [])) t@(Type (Name n', _)) | n == n' = Pass (e, t)
-                                                                 | otherwise = Mismatch (t, Type (Name n, as))
+                                                                 | otherwise = Error $ TypeMismatch t (Type (Name n, as))
 checkType e a b = matchTypes e a b
 
 matchTypes :: CheckEnv -> Type -> Type -> TypeCheck
 {- matchTypes e a b = Pass e -}
 matchTypes e (Name a) (Name b) | a == b || length a == 1 || length b == 1 = Pass (e, Name a)
-                               | otherwise = Mismatch (Name a, Name b)
+                               | otherwise = Error $ TypeMismatch (Name a) (Name b)
 matchTypes e (Type (a, as)) (Type (b, bs)) | consEq && numArgsEq && argsEq = Pass (e, Type (a, as))
-                                           | otherwise = Mismatch (Type (a, as), Type (b, bs))
+                                           | otherwise = Error $ TypeMismatch (Type (a, as)) (Type (b, bs))
                                            where
                                                consEq = case matchTypes e a b of
                                                              Pass _ -> True
@@ -47,7 +47,7 @@ matchTypes e (Type (a, as)) (Type (b, bs)) | consEq && numArgsEq && argsEq = Pas
                                                argsEq = and $ map (\ a -> case a of
                                                                                Pass _ -> True
                                                                                _ -> False) (zipWith (matchTypes e) as bs)
-matchTypes e a b = Mismatch (a, b)
+matchTypes e a b = Error $ TypeMismatch a b
 
 -- Deep-replace a type with another type (used for replacing polymorphic types)
 swapType :: [Type] -> Type -> Type -> [Type]
@@ -63,7 +63,7 @@ allType :: CheckEnv -> Type -> [Type] -> TypeCheck
 allType e t [] = Pass (e, t)
 allType e t (x:xs) = case checkType e x t of
                           Pass _ -> allType e t xs
-                          _ -> Mismatch (t, x)
+                          a -> a
 
 verifyList :: CheckEnv -> [AtomoVal] -> TypeCheck
 verifyList e (x:xs) = allType e (exprType e x) (map (exprType e) xs)
@@ -81,7 +81,11 @@ verifyHash e ((_, (t, v)):vs) = case checkType e (exprType e v) t of
                                      a -> a
 
 checkAST :: ThrowsError [AtomoVal] -> ThrowsError [AtomoVal]
-checkAST (Right a) = checkExprs ([], []) a a
+checkAST (Right a) = checkExprs env a a
+                     where
+                        funEnv = map (\(n, (a, f)) -> (n, getType a)) primFuncs
+                        ioEnv = map (\(n, (a, f)) -> (n, getType a)) ioPrims
+                        env = (funEnv ++ ioEnv, [])
 checkAST (Left err) = throwError err
 
 checkExprs :: CheckEnv -> [AtomoVal] -> [AtomoVal] -> ThrowsError [AtomoVal]
@@ -89,14 +93,12 @@ checkExprs _ [] t = return t
 checkExprs e (a:as) t = case checkExpr e a of
                              Pass (e, _) -> checkExprs e as t
                              Poly (e, _) -> checkExprs e as t
-                             Mismatch (e, f) -> throwError $ TypeMismatch e f
-                             Undefined n -> throwError $ UnboundVar "Undefined variable" n
+                             Error e -> throwError e
 
 exprType :: CheckEnv -> AtomoVal -> Type
 exprType e v = case checkExpr e v of
                     Pass (_, t) -> t
-                    Mismatch (e, f) -> error $ "Invalid type; expected `" ++ prettyType e ++ "', found `" ++ prettyType f ++ "'" -- TODO: This should throw an actual error.
-                    a -> error $ "Cannot get type of expr `" ++ show a ++ "'"
+                    Error e -> error (show e) -- TODO
 
 checkExpr :: CheckEnv -> AtomoVal -> TypeCheck
 checkExpr e (AList as) = verifyList e as
@@ -119,8 +121,8 @@ checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
                                             Just (Type (f, ts)) -> case checkArgs e ts (map (exprType e) as) of
                                                                         Poly (e, rs) -> Pass (e, findDiff f rs)
                                                                         a -> a
-                                            Just a -> error $ "Not a function: " ++ show a
-                                            Nothing -> Undefined n
+                                            Just a -> Error $ NotFunction n
+                                            Nothing -> Error $ UnboundVar n
                                        where
                                            findDiff d [] = d
                                            findDiff d ((f, r):ts) | replaced /= d = replaced
@@ -130,7 +132,7 @@ checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
 checkExpr e (AIf c t f) = checkType e (Name "bool") (exprType e c) >>* checkExpr e t >>* checkExpr e f
 checkExpr e (ABlock as) = checkAll e as
 checkExpr e (AFunc t n ps b) = case checkExpr newEnv b of
-                                    Pass (e, r) -> if r == t then Pass (e, t) else Mismatch (t, r)
+                                    Pass (e, r) -> if r == t then Pass (e, t) else Error $ TypeMismatch t r
                                     a -> a
                                where
                                    globalEnv = (n, Type (t, map fst ps)) : fst e
@@ -138,7 +140,7 @@ checkExpr e (AFunc t n ps b) = case checkExpr newEnv b of
                                    newEnv = (globalEnv, localEnv)
 checkExpr e (AVariable n) = case getAnyType e n of
                                  Just t -> Pass (e, t)
-                                 Nothing -> Undefined n
+                                 Nothing -> Error $ UnboundVar n
 checkExpr e (AValue n as d) = Pass (e, exprType e d)
 checkExpr e (AString as) = Pass (e, Name "string")
 checkExpr e (AConstruct n [] (AData d [] _)) = Pass (e, Name d)
@@ -151,6 +153,7 @@ checkAll :: CheckEnv -> [AtomoVal] -> TypeCheck
 checkAll e as = checkAll' e as (Name "void")
                 where
                     checkAll' e [] t = Pass (e, t)
+                    checkAll' e (AReturn r:_) _ = Pass (e, exprType e r)
                     checkAll' e (a:as) t = case checkExpr e a of
                                                 Pass (e, t) -> checkAll' e as t
                                                 a -> a
@@ -158,7 +161,7 @@ checkAll e as = checkAll' e as (Name "void")
 -- Check the arguments against the types the function defines,
 -- and return any polymorphic types along with their replacement.
 checkArgs :: CheckEnv -> [Type] -> [Type] -> TypeCheck
-checkArgs e ts' as' | length ts' /= length as' = Mismatch (Name "THIS IS REALLY A NUM ARGS ERROR", Name "TODO :-D")
+checkArgs e ts' as' | length ts' /= length as' = Error $ NumArgs (length ts') (length as')
                     | otherwise = checkArgs' e ts' as' []
                       where
                           checkArgs' e [] [] rs = Poly (e, rs)

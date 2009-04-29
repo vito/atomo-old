@@ -5,6 +5,7 @@ import Atomo.Env
 import Atomo.Error
 import Atomo.Internals
 import Atomo.Parser
+import Atomo.Primitive
 import Atomo.Typecheck
 
 import Control.Monad
@@ -15,8 +16,11 @@ import System.Console.Haskeline
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
+primIf e (AConstruct "true" _ _)  a _ = eval e a
+primIf e (AConstruct "false" _ _) _ b = eval e b
 primIf e (AValue "true" _ _)  a _ = eval e a
 primIf e (AValue "false" _ _) _ b = eval e b
+primIf e c a b = error (show c)
 
 patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
 patternMatch s ps as = return ()

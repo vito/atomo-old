@@ -2,6 +2,7 @@ module Atomo.Env where
 
 import Atomo.Error
 import Atomo.Internals
+import Atomo.Primitive (primFuncs, ioPrims)
 
 import Control.Monad.Error
 import Data.IORef
@@ -14,7 +15,11 @@ nullScope :: IO Scope
 nullScope = newIORef []
 
 nullEnv :: IO Env
-nullEnv = do global <- nullScope
+nullEnv = do prims <- mapM (\(n, (a, f)) -> do val <- newIORef a
+                                               return (n, val)) primFuncs
+             io <- mapM (\(n, (a, f)) -> do val <- newIORef a
+                                            return (n, val)) ioPrims
+             global <- newIORef (prims ++ io)
              local <- nullScope
              return (global, local)
 
@@ -42,7 +47,7 @@ setVal e s v = do env <- liftIO $ readIORef e
                      then throwError $ ImmutableVar s
                      else case lookup s env of
                                Just ref -> liftIO $ writeIORef ref v
-                               Nothing -> throwError $ UnboundVar "Can not set unbound variable" s
+                               Nothing -> throwError $ UnboundVar s
                   return v
 
 defineVal :: Scope -> String -> AtomoVal -> IOThrowsError AtomoVal
@@ -65,13 +70,13 @@ setGlobal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
 setGlobal e s v = defineVal (globalScope e) s v
 
 getLocal :: Env -> String -> IOThrowsError AtomoVal
-getLocal e s = getVal (localScope e) s (throwError $ UnboundVar "Unknown local variable" s)
+getLocal e s = getVal (localScope e) s (throwError $ UnboundVar s)
 
 getGlobal :: Env -> String -> IOThrowsError AtomoVal
-getGlobal e s = getVal (globalScope e) s (throwError $ UnboundVar "Unknown global variable" s)
+getGlobal e s = getVal (globalScope e) s (throwError $ UnboundVar s)
 
 getAny :: Env -> String -> IOThrowsError AtomoVal
 getAny e s = getVal (globalScope e) s (tryLocal)
              where
                  tryLocal = getVal (localScope e) s (error)
-                 error = throwError $ UnboundVar "Unknown local or global variable" s
+                 error = throwError $ UnboundVar s

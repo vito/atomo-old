@@ -2,7 +2,8 @@ module Atomo.Compiler where
 
 import Atomo.Error
 import Atomo.Internals
-import Atomo.Parser (readExpr, getIOPrim, toAString)
+import Atomo.Parser (readExpr)
+import Atomo.Primitive (getIOPrim)
 
 import Control.Monad
 import Control.Monad.Trans

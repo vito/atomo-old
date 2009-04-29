@@ -74,11 +74,15 @@ fromAString (AString s) = map fromAChar (fromAList s)
 fromAString (AList l) = map fromAChar (fromAList (AList l))
 fromAConstruct (AConstruct s _ _) = s
 
+-- String to an AList of AChars
+toAString :: String -> AtomoVal
+toAString s = AString $ AList (map AChar s)
+
 data AtomoError = NumArgs Int Int
                 | ImmutableVar String
                 | TypeMismatch Type Type
-                | NotFunction String String
-                | UnboundVar String String
+                | NotFunction String
+                | UnboundVar String
                 | Parser ParseError
                 | Default String
 
@@ -87,8 +91,8 @@ instance Show AtomoError where
     show (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found " ++ show found
     show (ImmutableVar var)            = "Cannot reassign immutable reference `" ++ var ++ "`"
     show (TypeMismatch expected found) = "Invalid type; expected `" ++ prettyType expected ++ "', found `" ++ prettyType found ++ "'"
-    show (NotFunction message func)    = message ++ ": " ++ func
-    show (UnboundVar message var)      = message ++ ": " ++ var
+    show (NotFunction func)    = "Variable is not a function: " ++ func
+    show (UnboundVar var)      = "Reference to unknown variable: " ++ var
     show (Parser err)                  = "Parse error at " ++ show err
     show (Default message)             = message
 
@@ -108,6 +112,8 @@ getType (AConstruct _ ts d@(AData n ps _)) = Type (getType d, ts)
 getType (AData n [] _) = Name n
 getType (AData n as _) = Type (Name n, as)
 getType (AFunc t _ as _) = Type (t, map fst as)
+getType (APrimFunc t n as) = Type (t, as)
+getType (AIOFunc t n as) = Type (t, as)
 getType (AReturn r) = getType r
 getType (ADefine _ _ v) = getType v
 getType (AValue _ _ d@(AData n [] _)) = getType d
