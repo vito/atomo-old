@@ -34,10 +34,10 @@ checkType e (Type (Name "[]", [Name "char"])) (Name "string")
 checkType e _ (Name [a]) = Pass (e, Name [a])
 checkType e (Name [a]) _ = Pass (e, Name [a])
 -- Constructors that take no argument should always match against their constructor
-checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
-                                                                  | otherwise = Error $ TypeMismatch t f
 checkType e (Type (Type (Name n, as), [])) t@(Type (Name n', _)) | n == n' = Pass (e, t)
                                                                  | otherwise = Error $ TypeMismatch t (Type (Name n, as))
+checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
+                                                                  | otherwise = matchTypes e t f
 checkType e a b = matchTypes e a b
 
 matchTypes :: CheckEnv -> Type -> Type -> TypeCheck
