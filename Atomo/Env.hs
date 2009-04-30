@@ -52,8 +52,6 @@ defineVal e s v = do defined <- liftIO $ isBound e s
 
 getVal :: Scope -> String -> IOThrowsError AtomoVal
 getVal e s = do env <- liftIO $ readIORef e
-                v <- (liftIO . readIORef . fromJust) (lookup s env)
-
                 case lookup s env of
                      Just v -> (liftIO . readIORef) v >>= return
                      Nothing -> error $ "Could not find variable `" ++ s ++ "'"
@@ -71,11 +69,7 @@ getGlobal :: Env -> String -> IOThrowsError AtomoVal
 getGlobal e s = getVal (globalScope e) s
 
 getAny :: Env -> String -> IOThrowsError AtomoVal
-getAny e s = do global <- liftIO . readIORef $ globalScope e
-                local <- liftIO . readIORef $ localScope e
-
+getAny e s = do local <- liftIO . readIORef $ localScope e
                 case lookup s local of
                   Just v -> (liftIO . readIORef) v >>= return
-                  Nothing -> case lookup s global of
-                                  Just v -> (liftIO . readIORef) v >>= return
-                                  Nothing -> error $ "Could not find variable `" ++ s ++ "'"
+                  Nothing -> getGlobal e s

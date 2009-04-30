@@ -34,6 +34,8 @@ checkType e (Type (Name "[]", [Name "char"])) (Name "string")
 checkType e _ (Name [a]) = Pass (e, Name [a])
 checkType e (Name [a]) _ = Pass (e, Name [a])
 -- Constructors that take no argument should always match against their constructor
+checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
+                                                                  | otherwise = Error $ TypeMismatch t f
 checkType e (Type (Type (Name n, as), [])) t@(Type (Name n', _)) | n == n' = Pass (e, t)
                                                                  | otherwise = Error $ TypeMismatch t (Type (Name n, as))
 checkType e a b = matchTypes e a b
@@ -71,7 +73,10 @@ allType e t (x:xs) = case checkType e x t of
                           a -> a
 
 verifyList :: CheckEnv -> [AtomoVal] -> TypeCheck
-verifyList e (x:xs) = either id (\(h:ts) -> allType e h ts) $ checkTypes e xs []
+verifyList e [] = Pass (e, Type (Name "[]", [Name "a"]))
+verifyList e xs = case either id (\(h:ts) -> allType e h ts) $ checkTypes e xs [] of
+                       Pass (e, t) -> Pass (e, Type (Name "[]", [t]))
+                       e -> e
 
 verifyTuple :: CheckEnv -> [(Type, AtomoVal)] -> TypeCheck
 verifyTuple e [] = Pass (e, Name "tuple")

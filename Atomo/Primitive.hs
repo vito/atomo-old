@@ -94,8 +94,11 @@ primMul a b | isAInt a && isAInt b = intToPrim $ fromAInt a * fromAInt b
 primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
             | isADouble a && isADouble b = doubleToPrim $ fromADouble a / fromADouble b
 
+list :: Type
+list = Type (Name "[]", [Name "a"])
+
 primFuncs :: [(String, (AtomoVal, [AtomoVal] -> ThrowsError AtomoVal))]
-primFuncs = [ ("++", (APrimFunc (Type (Name "[]", [Name "a"])) "++" [Type (Name "[]", [Name "a"]), Type (Name "[]", [Name "a"])], concatFunc))
+primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
             , ("==", (APrimFunc (Name "bool") "==" [Name "a", Name "a"], equalityFunc))
             , ("/=", (APrimFunc (Name "bool") "/=" [Name "a", Name "a"], inequalityFunc))
             , ("+", (APrimFunc (Name "int") "+" [Name "int", Name "int"], addFunc))

@@ -6,7 +6,13 @@ list(int) a = cons(1, cons(2, null))
 list(list(int)) c = cons(cons(1, cons(2, null)), null)
 [[int]] d = [[1, 2]]
 
-dump(a, b, c, d)
-print(type(a), type(b), type(c), type(d))
+dump(a)
+dump(b)
+dump(c)
+dump(d)
+print(typeOf(a))
+print(typeOf(b))
+print(typeOf(c))
+print(typeOf(d))
 
-dump(cons(1, cons(2, cons("three", null)))) -- ERROR!
+{- dump(cons(1, cons(2, cons("three", null)))) -- ERROR! -}
