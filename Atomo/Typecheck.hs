@@ -10,6 +10,11 @@ import Text.Parsec.Pos (SourcePos, newPos)
 type CheckEnv = ([(String, Type)], [(String, Type)])
 data TypeCheck = Pass (CheckEnv, Type) | Poly (CheckEnv, [(Type, Type)]) | Error (SourcePos -> AtomoError)
 
+instance Show TypeCheck where
+    show (Pass (e, t)) = "Pass (" ++ show e ++ ", " ++ show t ++ ")"
+    show (Poly (e, ts)) = "Poly (" ++ show e ++ ", " ++ show ts ++ ")"
+    show (Error e) = "Error (...)"
+
 getAnyType :: CheckEnv -> String -> Maybe Type
 getAnyType e n = case lookup n (fst e) of
                       Just t -> Just t
