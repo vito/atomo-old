@@ -123,6 +123,10 @@ aExpr = try aVar
     <|> aChar
     <|> aReference
 
+aTrackedExpr :: Parser (SourcePos, AtomoVal)
+aTrackedExpr = do pos <- getPosition
+                  expr <- aExpr
+                  return (pos, expr)
 
 -- Reference (variable lookup)
 aReference :: Parser AtomoVal
@@ -375,3 +379,9 @@ readExprs es = readOrThrow (many $ do whiteSpace
                                       x <- aExpr
                                       optional newline <|> eof
                                       return x) es
+
+readTrackedExprs :: String -> ThrowsError [(SourcePos, AtomoVal)]
+readTrackedExprs es = readOrThrow (many $ do whiteSpace
+                                             x <- aTrackedExpr
+                                             optional newline <|> eof
+                                             return x) es

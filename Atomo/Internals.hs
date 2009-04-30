@@ -3,6 +3,7 @@ module Atomo.Internals where
 import Control.Monad.Error
 import Data.List (intercalate)
 import Text.Parsec (ParseError)
+import Text.Parsec.Pos (newPos, sourceName, sourceLine, sourceColumn, SourcePos)
 
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
@@ -78,27 +79,31 @@ fromAConstruct (AConstruct s _ _) = s
 toAString :: String -> AtomoVal
 toAString s = AString $ AList (map AChar s)
 
-data AtomoError = NumArgs Int Int
-                | ImmutableVar String
-                | TypeMismatch Type Type
-                | NotFunction String
-                | UnboundVar String
+data AtomoError = NumArgs Int Int SourcePos
+                | ImmutableVar String SourcePos
+                | TypeMismatch Type Type SourcePos
+                | NotFunction String SourcePos
+                | UnboundVar String SourcePos
                 | Parser ParseError
-                | Default String
+                | Default String SourcePos
 
 
 instance Show AtomoError where
-    show (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found " ++ show found
-    show (ImmutableVar var)            = "Cannot reassign immutable reference `" ++ var ++ "`"
-    show (TypeMismatch expected found) = "Invalid type; expected `" ++ prettyType expected ++ "', found `" ++ prettyType found ++ "'"
-    show (NotFunction func)    = "Variable is not a function: " ++ func
-    show (UnboundVar var)      = "Reference to unknown variable: " ++ var
-    show (Parser err)                  = "Parse error at " ++ show err
-    show (Default message)             = message
+    show (NumArgs e f p)      = prettyPos p ++ "Expected " ++ show e ++ " args; found " ++ show f
+    show (ImmutableVar n p)   = prettyPos p ++ "Cannot reassign immutable reference `" ++ n ++ "`"
+    show (TypeMismatch e f p) = prettyPos p ++ "Invalid type; expected `" ++ prettyType e ++ "', found `" ++ prettyType f ++ "'"
+    show (NotFunction n p)    = prettyPos p ++ "Variable is not a function: " ++ n
+    show (UnboundVar n p)     = prettyPos p ++ "Reference to unknown variable: " ++ n
+    show (Parser e)           = "Parse error at " ++ show e
+    show (Default m p)        = prettyPos p ++ m
 
 instance Error AtomoError where
-    noMsg = Default "An error has occurred"
-    strMsg = Default
+    noMsg = Default "An error has occurred" (newPos "unknown" 0 0)
+    strMsg = flip Default (newPos "unknown" 0 0)
+
+prettyPos :: SourcePos -> String
+prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
+            | otherwise = "`" ++ sourceName p ++ "', line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
 
 getType :: AtomoVal -> Type
 getType (ADouble _) = Name "double"

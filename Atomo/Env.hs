@@ -1,3 +1,5 @@
+-- TODO: Clean up the errors being thrown here.
+
 module Atomo.Env where
 
 import Atomo.Error
@@ -7,6 +9,7 @@ import Atomo.Primitive (primFuncs, ioPrims)
 import Control.Monad.Error
 import Data.IORef
 import Data.Maybe (fromJust)
+import Text.Parsec.Pos (newPos)
 
 type Scope = IORef [(String, IORef AtomoVal)]
 type Env = (Scope, Scope) -- (Global, Local)
@@ -44,10 +47,10 @@ setVal :: Scope -> String -> AtomoVal -> IOThrowsError AtomoVal
 setVal e s v = do env <- liftIO $ readIORef e
                   immutable <- liftIO $ isImmutable e s
                   if immutable
-                     then throwError $ ImmutableVar s
+                     then throwError $ ImmutableVar s (newPos "" 0 0)
                      else case lookup s env of
                                Just ref -> liftIO $ writeIORef ref v
-                               Nothing -> throwError $ UnboundVar s
+                               Nothing -> throwError $ UnboundVar s (newPos "" 0 0)
                   return v
 
 defineVal :: Scope -> String -> AtomoVal -> IOThrowsError AtomoVal
@@ -70,13 +73,13 @@ setGlobal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
 setGlobal e s v = defineVal (globalScope e) s v
 
 getLocal :: Env -> String -> IOThrowsError AtomoVal
-getLocal e s = getVal (localScope e) s (throwError $ UnboundVar s)
+getLocal e s = getVal (localScope e) s (throwError $ UnboundVar s (newPos "" 0 0))
 
 getGlobal :: Env -> String -> IOThrowsError AtomoVal
-getGlobal e s = getVal (globalScope e) s (throwError $ UnboundVar s)
+getGlobal e s = getVal (globalScope e) s (throwError $ UnboundVar s (newPos "" 0 0))
 
 getAny :: Env -> String -> IOThrowsError AtomoVal
 getAny e s = getVal (globalScope e) s (tryLocal)
              where
                  tryLocal = getVal (localScope e) s (error)
-                 error = throwError $ UnboundVar s
+                 error = throwError $ UnboundVar s (newPos "" 0 0)

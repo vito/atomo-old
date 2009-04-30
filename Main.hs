@@ -13,6 +13,7 @@ import Control.Monad.Error
 import Control.Monad.Trans
 import System
 import System.Console.Haskeline
+import Text.Parsec.Pos (newPos)
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
@@ -77,7 +78,7 @@ eval e (ABlock es)     = evalAll e es
 eval e (AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
-eval e v               = throwError $ Default $ "Can't evaluate: " ++ show v
+eval e v               = throwError $ Default ("Can't evaluate: " ++ show v) (newPos "" 0 0)
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
 evalAll e es = evalAll' e es ANone
@@ -97,7 +98,7 @@ evalAndPrint e s = evalString e s >>= putStrLn
 
 -- Execute a string
 execute :: Env -> String -> IO ()
-execute e s = do let parsed = checkAST $ readExprs s
+execute e s = do let parsed = checkAST $ readTrackedExprs s
                  case parsed of -- Catch parse errors
                       Left err -> print err
                       Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
