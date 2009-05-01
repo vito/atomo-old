@@ -34,6 +34,7 @@ data AtomoVal = AInt Integer
               | AValue String [AtomoVal] AtomoVal
               | AIf AtomoVal AtomoVal AtomoVal
               | AReturn AtomoVal
+              | AType String Type
               | ANone
               deriving (Eq)
 
@@ -61,6 +62,7 @@ instance Show AtomoVal where
     show (AValue n as d) = "AValue " ++ show n ++ " " ++ show as ++ " (AData ...)"
     show (AIf c t f) = "AIf (" ++ show c ++ ") (" ++ show t ++ ") (" ++ show f ++ ")"
     show (AReturn v) = "AReturn " ++ show v
+    show (AType n t) = "AType " ++ show n ++ " (" ++ show t ++ ")"
     show (ANone) = "ANone"
 
 
@@ -78,6 +80,13 @@ fromAConstruct (AConstruct s _ _) = s
 -- String to an AList of AChars
 toAString :: String -> AtomoVal
 toAString s = AString $ AList (map AChar s)
+
+list :: Type
+list = Type (Name "[]", [Name "a"])
+
+listOf :: Type -> Type
+listOf a = Type (Name "[]", [a])
+
 
 data AtomoError = NumArgs Int Int SourcePos
                 | ImmutableVar String SourcePos
@@ -106,12 +115,14 @@ prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++
             | otherwise = "`" ++ sourceName p ++ "', line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
 
 getType :: AtomoVal -> Type
+getType (AChar _) = Name "char"
 getType (ADouble _) = Name "double"
-getType (AList []) = Name "[]"
-getType (AList as) = Type (Name "[]", [getType (head as)])
+getType (AList []) = Type (Name "[]", [])
+getType (AList as) = listOf $ getType (head as)
 getType (ATuple _) = Name "tuple"
 getType (AHash _) = Name "hash"
-getType (AString _) = Name "string" -- todo: make type aliases work
+getType (AString _) = listOf (Name "char")
+getType (AType n v) = v
 getType (AConstruct _ [] d@(AData n ps _)) = getType d
 getType (AConstruct _ ts d@(AData n ps _)) = Type (getType d, ts)
 getType (AData n [] _) = Name n

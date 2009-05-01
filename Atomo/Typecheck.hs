@@ -27,21 +27,22 @@ Error e >>* _ = Error e
 -- todo: type aliases, and alias string to [char] in the prelude
 --       so we don't have to do this silliness
 checkType :: CheckEnv -> Type -> Type -> TypeCheck
-checkType e (Name "string") (Type (Name "[]", [Name "char"]))
-          = Pass (e, Name "string")
-checkType e (Type (Name "[]", [Name "char"])) (Name "string")
-          = Pass (e, Name "string")
 checkType e _ (Name [a]) = Pass (e, Name [a])
 checkType e (Name [a]) _ = Pass (e, Name [a])
 -- Constructors that take no argument should always match against their constructor
-checkType e (Type (Type (Name n, as), [])) t@(Type (Name n', _)) | n == n' = Pass (e, t)
-                                                                 | otherwise = Error $ TypeMismatch t (Type (Name n, as))
+checkType e (Type (Type (Name c, as), [])) t@(Type (Name d, _)) | c == d = Pass (e, t)
+                                                                | otherwise = Error $ TypeMismatch t (Type (Name c, as))
 checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
                                                                   | otherwise = matchTypes e t f
+checkType e a@(Name n) b = case getAnyType e n of
+                                Just t -> matchTypes e t b
+                                Nothing -> matchTypes e a b
+checkType e a b@(Name n) = case getAnyType e n of
+                                Just t -> matchTypes e a t
+                                Nothing -> matchTypes e a b
 checkType e a b = matchTypes e a b
 
 matchTypes :: CheckEnv -> Type -> Type -> TypeCheck
-{- matchTypes e a b = Pass e -}
 matchTypes e (Name a) (Name b) | a == b || length a == 1 || length b == 1 = Pass (e, Name a)
                                | otherwise = Error $ TypeMismatch (Name a) (Name b)
 matchTypes e (Type (a, as)) (Type (b, bs)) | consEq && numArgsEq && argsEq = Pass (e, Type (a, as))
@@ -148,7 +149,9 @@ checkExpr e (AIf c t f) = either id (\r -> checkType e (Name "bool") r >>*
                                            checkExpr e f) $ exprType e c
 checkExpr e (ABlock as) = checkAll e as
 checkExpr e (AFunc t n ps b) = case checkExpr newEnv b of
-                                    Pass (e, r) -> if r == t then Pass (e, t) else Error $ TypeMismatch t r
+                                    Pass (e, r) -> case checkType e t r of
+                                                        Pass (e, t) -> Pass (e, t)
+                                                        a -> a
                                     a -> a
                                where
                                    globalEnv = (n, Type (t, map fst ps)) : fst e
@@ -158,10 +161,11 @@ checkExpr e (AVariable n) = case getAnyType e n of
                                  Just t -> Pass (e, t)
                                  Nothing -> Error $ UnboundVar n
 checkExpr e (AValue n as d) = Pass (e, getType d)
-checkExpr e (AString as) = Pass (e, Name "string")
+checkExpr e (AString as) = Pass (e, Type (Name "[]", [Name "char"]))
 checkExpr e (AConstruct _ [] (AData d [] _)) = Pass (e, Name d)
 checkExpr e (AConstruct _ [] (AData d ps _)) = Pass (e, Type (Name d, ps))
 checkExpr e (AConstruct _ as (AData d ps _)) = Pass (e, Type (Type (Name d, ps), as))
+checkExpr e (AType n t) = Pass (((n, t) : fst e, snd e), t)
 checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.
 
 -- Check all expressions and return the return type.

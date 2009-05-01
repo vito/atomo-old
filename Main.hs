@@ -56,6 +56,7 @@ eval e v@(AString _)        = return v
 eval e v@(AConstruct _ _ _) = return v
 eval e v@(AReturn _)        = return v
 eval e v@(AFunc _ n _ _)    = setGlobal e n v
+eval e v@(AType n _)        = setGlobal e n v
 eval e (ATuple vs)     = do tuple <- mapM (\(t, v) -> do val <- eval e v
                                                          return (t, val)) vs
                             return $ ATuple tuple

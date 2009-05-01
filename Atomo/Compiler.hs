@@ -24,7 +24,7 @@ genPrint (ACall (AIOFunc _ "print" _) [AString s]) = do
 genPrint (ACall (AIOFunc _ "dump" _) [s]) = genPrint printCall
                                           where
                                               printCall = ACall printFunc targets
-                                              printFunc = AIOFunc (Name "void") "print" [Name "string"]
+                                              printFunc = AIOFunc (Name "void") "print" [listOf (Name "char")]
                                               targets = [(toAString (pretty s))]
 
 expr = "dump(50.0)"

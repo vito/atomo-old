@@ -121,6 +121,7 @@ aExpr = try aVar
     <|> aNumber
     <|> aString
     <|> aChar
+    <|> aNewType
     <|> aReference
 
 aTrackedExpr :: Parser (SourcePos, AtomoVal)
@@ -166,6 +167,14 @@ aType = try (do ret <- aSimpleType <|> parens aType
                 return $ Type (ret, args))
     <|> aSimpleType
         <?> "type declaration"
+
+aNewType :: Parser AtomoVal
+aNewType = do reserved "type"
+              name <- identifier
+              colon
+              whiteSpace
+              theType <- aType
+              return $ AType name theType
 
 aPattern :: Parser String -- TODO: Finish this
 aPattern = parens (identifier <|> string "_")

@@ -94,9 +94,6 @@ primMul a b | isAInt a && isAInt b = intToPrim $ fromAInt a * fromAInt b
 primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
             | isADouble a && isADouble b = doubleToPrim $ fromADouble a / fromADouble b
 
-list :: Type
-list = Type (Name "[]", [Name "a"])
-
 primFuncs :: [(String, (AtomoVal, [AtomoVal] -> ThrowsError AtomoVal))]
 primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
             , ("==", (APrimFunc (Name "bool") "==" [Name "a", Name "a"], equalityFunc))
@@ -106,8 +103,8 @@ primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
             , ("*", (APrimFunc (Name "int") "*" [Name "int", Name "int"], mulFunc))
             , ("/", (APrimFunc (Name "int") "/" [Name "int", Name "int"], divFunc))
             , ("<", (APrimFunc (Name "bool") "<" [Name "int", Name "int"], lessFunc))
-            , ("show", (APrimFunc (Name "string") "show" [Name "a"], showFunc))
-            , ("typeOf", (APrimFunc (Name "string") "typeOf" [Name "a"], typeFunc))
+            , ("show", (APrimFunc (listOf $ Name "char") "show" [Name "a"], showFunc))
+            , ("typeOf", (APrimFunc (listOf $ Name "char") "typeOf" [Name "a"], typeFunc))
             ]
             where
                 addFunc [a, b] = return $ primAdd a b
@@ -140,7 +137,7 @@ primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
 
 -- Primitive I/O functions
 ioPrims :: [(String, (AtomoVal, [AtomoVal] -> IOThrowsError AtomoVal))]
-ioPrims = [ ("print", (AIOFunc (Name "void") "print" [Name "string"], printFunc))
+ioPrims = [ ("print", (AIOFunc (Name "void") "print" [listOf (Name "char")], printFunc))
           , ("dump", (AIOFunc (Name "void") "dump" [Name "a"], dumpFunc))
           ]
           where
