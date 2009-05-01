@@ -146,7 +146,7 @@ checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
                                             Just (Func (f, ps)) -> either id (\ts -> case checkArgs e ps ts of
                                                                                           Poly (e, rs) -> Pass (e, findDiff f rs)
                                                                                           a -> a) $ checkTypes e as []
-                                            Just a -> Error $ NotFunction (show a)
+                                            Just a -> Error $ NotFunction n
                                             Nothing -> Error $ UnboundVar n
                                        where
                                            findDiff d [] = d
