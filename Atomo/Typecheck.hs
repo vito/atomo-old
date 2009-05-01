@@ -30,7 +30,7 @@ checkType :: CheckEnv -> Type -> Type -> TypeCheck
 checkType e _ (Name [a]) = Pass (e, Name [a])
 checkType e (Name [a]) _ = Pass (e, Name [a])
 -- Constructors that take no argument should always match against their constructor
-checkType e (Type (Type (Name c, as), [])) t@(Type (Name d, _)) | c == d = Pass (e, t)
+checkType e (Func (Type (Name c, as), [])) t@(Type (Name d, _)) | c == d = Pass (e, t)
                                                                 | otherwise = Error $ TypeMismatch t (Type (Name c, as))
 checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
                                                                   | otherwise = matchTypes e t f
@@ -54,7 +54,17 @@ matchTypes e (Type (a, as)) (Type (b, bs)) | consEq && numArgsEq && argsEq = Pas
                                                numArgsEq = length as == length bs
                                                argsEq = and $ map (\ a -> case a of
                                                                                Pass _ -> True
-                                                                               _ -> False) (zipWith (matchTypes e) as bs)
+                                                                               _ -> False) (zipWith (checkType e) as bs)
+matchTypes e (Func (a, as)) (Func (b, bs)) | consEq && numArgsEq && argsEq = Pass (e, Func (a, as))
+                                           | otherwise = Error $ TypeMismatch (Func (a, as)) (Func (b, bs))
+                                           where
+                                               consEq = case checkType e a b of
+                                                             Pass _ -> True
+                                                             _ -> False
+                                               numArgsEq = length as == length bs
+                                               argsEq = and $ map (\ a -> case a of
+                                                                               Pass _ -> True
+                                                                               _ -> False) (zipWith (checkType e) as bs)
 matchTypes e a b = Error $ TypeMismatch a b
 
 -- Deep-replace a type with another type (used for replacing polymorphic types)
@@ -133,10 +143,10 @@ checkExpr e (ACall (AIOFunc t n ps) as) = either id (\ts -> checkArgs e ps ts >>
 checkExpr e (ACall (APrimFunc t n ps) as) = either id (\ts -> checkArgs e ps ts >>*
                                                               Pass (e, t)) $  checkTypes e as []
 checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
-                                            Just (Type (f, ps)) -> either id (\ts -> case checkArgs e ps ts of
+                                            Just (Func (f, ps)) -> either id (\ts -> case checkArgs e ps ts of
                                                                                           Poly (e, rs) -> Pass (e, findDiff f rs)
                                                                                           a -> a) $ checkTypes e as []
-                                            Just a -> Error $ NotFunction n
+                                            Just a -> Error $ NotFunction (show a)
                                             Nothing -> Error $ UnboundVar n
                                        where
                                            findDiff d [] = d
@@ -154,7 +164,7 @@ checkExpr e (AFunc t n ps b) = case checkExpr newEnv b of
                                                         a -> a
                                     a -> a
                                where
-                                   globalEnv = (n, Type (t, map fst ps)) : fst e
+                                   globalEnv = (n, Func (t, map fst ps)) : fst e
                                    localEnv = map (\(a, b) -> (b, a)) ps ++ snd e
                                    newEnv = (globalEnv, localEnv)
 checkExpr e (AVariable n) = case getAnyType e n of
@@ -164,7 +174,7 @@ checkExpr e (AValue n as d) = Pass (e, getType d)
 checkExpr e (AString as) = Pass (e, Type (Name "[]", [Name "char"]))
 checkExpr e (AConstruct _ [] (AData d [] _)) = Pass (e, Name d)
 checkExpr e (AConstruct _ [] (AData d ps _)) = Pass (e, Type (Name d, ps))
-checkExpr e (AConstruct _ as (AData d ps _)) = Pass (e, Type (Type (Name d, ps), as))
+checkExpr e (AConstruct _ as (AData d ps _)) = Pass (e, Func (Type (Name d, ps), as))
 checkExpr e (AType n t) = Pass (((n, t) : fst e, snd e), t)
 checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.
 

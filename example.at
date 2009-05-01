@@ -211,7 +211,7 @@ class [a] -> string: -- More special than just a list
 -- Which expands to:
 --     fizz(buzz(baz("hi")))
 infix 9: .
-(c f(a)) .(c f(b), b g(a)):
+c .(c f(b), b g(a), a x):
     f(g(x))
 
 

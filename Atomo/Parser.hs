@@ -28,7 +28,7 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                         , P.reservedOpNames = ["=", "=>", "->", "+", "-", "*", "/", "++"]
+                         , P.reservedOpNames = ["=", "=>", "->"]
                          , P.reservedNames   = ["if", "else", "elseif", "while",
                                                 "for", "class", "data", "type",
                                                 "where", "module", "infix",
@@ -131,7 +131,7 @@ aTrackedExpr = do pos <- getPosition
 
 -- Reference (variable lookup)
 aReference :: Parser AtomoVal
-aReference = do name <- identifier
+aReference = do name <- identifier <|> operator
                 return $ AVariable name
              <?> "variable reference"
 
@@ -164,7 +164,7 @@ aType :: Parser Type
 aType = try (do ret <- aSimpleType <|> parens aType
                 anyChar
                 args <- parens (commaSep aType)
-                return $ Type (ret, args))
+                return $ Func (ret, args))
     <|> aSimpleType
         <?> "type declaration"
 

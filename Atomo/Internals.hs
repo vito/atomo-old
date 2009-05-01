@@ -8,7 +8,7 @@ import Text.Parsec.Pos (newPos, sourceName, sourceLine, sourceColumn, SourcePos)
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
-data Type = Name String | Type (Type, [Type])
+data Type = Name String | Type (Type, [Type]) | Func (Type, [Type])
             deriving (Show, Eq)
 
 data AtomoVal = AInt Integer
@@ -126,12 +126,12 @@ getType (AHash _) = Name "hash"
 getType (AString _) = listOf (Name "char")
 getType (AType n v) = v
 getType (AConstruct _ [] d@(AData n ps _)) = getType d
-getType (AConstruct _ ts d@(AData n ps _)) = Type (getType d, ts)
+getType (AConstruct _ ts d@(AData n ps _)) = Func (getType d, ts)
 getType (AData n [] _) = Name n
 getType (AData n as _) = Type (Name n, as)
-getType (AFunc t _ as _) = Type (t, map fst as)
-getType (APrimFunc t n as) = Type (t, as)
-getType (AIOFunc t n as) = Type (t, as)
+getType (AFunc t _ as _) = Func (t, map fst as)
+getType (APrimFunc t n as) = Func (t, as)
+getType (AIOFunc t n as) = Func (t, as)
 getType (AReturn r) = getType r
 getType (ADefine _ _ v) = getType v
 getType (AValue _ _ d@(AData n [] _)) = getType d
@@ -175,11 +175,13 @@ pretty (ABlock es)      = intercalate "\n" $ map pretty es
 pretty (AData s as _)   = prettyType $ Type (Name s, as)
 pretty (AConstruct s [] _) = s
 pretty (AConstruct s ts _) = s ++ "(" ++ intercalate ", " (map prettyType ts) ++ ")"
+pretty (AValue v [] _)  = v
 pretty (AValue v as _)  = v ++ "(" ++ intercalate ", " (map pretty as) ++ ")"
 pretty ANone            = "None"
 pretty a                = "TODO"
 
 prettyType :: Type -> String
+prettyType (Name a) = a
 prettyType (Type (Name "[]", [t])) = "[" ++ prettyType t ++ "]"
 prettyType (Type (a, ts)) = prettyType a ++ "(" ++ intercalate ", " (map prettyType ts) ++ ")"
-prettyType (Name a) = a
+prettyType (Func (a, ts)) = prettyType a ++ " f(" ++ intercalate ", " (map prettyType ts) ++ ")"

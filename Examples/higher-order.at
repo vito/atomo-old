@@ -1,4 +1,15 @@
-b apply(b f(a) fun, a arg):
-    fun(arg)
+b apply(b f(a) f, a x):
+    f(x)
+
+c operate(c f(a, b) f, a x, b y):
+    f(x, y)
+
+c combine(c f(b) f, b f(a) g, a x):
+    f(g(x))
 
 print(apply(show, "Hello, world!"))
+dump(operate(*, 6, 7))
+combine(print, show, "Dumped!")
+print("Type of `apply'  : " ++ typeOf(apply))
+print("Type of `operate': " ++ typeOf(operate))
+print("Type of `combine': " ++ typeOf(combine))

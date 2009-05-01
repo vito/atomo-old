@@ -22,8 +22,8 @@ primFalse :: AtomoVal
 primFalse = AValue "false" [] primBool
 
 primNot :: AtomoVal -> AtomoVal
-primNot (AConstruct "true"  _ _) = primFalse
-primNot (AConstruct "false" _ _) = primTrue
+primNot (AValue "true"  _ _) = primFalse
+primNot (AValue "false" _ _) = primTrue
 
 boolToPrim :: Bool -> AtomoVal
 boolToPrim True  = primTrue
