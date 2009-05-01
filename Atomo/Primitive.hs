@@ -98,10 +98,10 @@ primFuncs :: [(String, (AtomoVal, [AtomoVal] -> ThrowsError AtomoVal))]
 primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
             , ("==", (APrimFunc (Name "bool") "==" [Name "a", Name "a"], equalityFunc))
             , ("/=", (APrimFunc (Name "bool") "/=" [Name "a", Name "a"], inequalityFunc))
-            , ("+", (APrimFunc (Name "int") "+" [Name "int", Name "int"], addFunc))
-            , ("-", (APrimFunc (Name "int") "-" [Name "int", Name "int"], subFunc))
-            , ("*", (APrimFunc (Name "int") "*" [Name "int", Name "int"], mulFunc))
-            , ("/", (APrimFunc (Name "int") "/" [Name "int", Name "int"], divFunc))
+            , ("+", (APrimFunc (Name "a") "+" [Name "a", Name "a"], addFunc)) -- Where "a" is `int` or `double`.
+            , ("-", (APrimFunc (Name "a") "-" [Name "a", Name "a"], subFunc)) -- However, this needs to be expanded
+            , ("*", (APrimFunc (Name "a") "*" [Name "a", Name "a"], mulFunc)) -- to typeclasses eventually. (TODO)
+            , ("/", (APrimFunc (Name "a") "/" [Name "a", Name "a"], divFunc))
             , ("<", (APrimFunc (Name "bool") "<" [Name "int", Name "int"], lessFunc))
             , ("show", (APrimFunc (listOf $ Name "char") "show" [Name "a"], showFunc))
             , ("typeOf", (APrimFunc (listOf $ Name "char") "typeOf" [Name "a"], typeFunc))

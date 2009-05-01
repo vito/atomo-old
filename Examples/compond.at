@@ -1,0 +1,19 @@
+type grid: [[int]]
+
+grid mat = [[1, 2, 3, 4],
+            [4, 1, 2, 3],
+            [3, 4, 1, 2],
+            [2, 3, 4, 1]]
+
+dump(mat)
+print(typeOf(mat))
+
+data maybe(a): nothing | just(a)
+type sudoku: [[maybe(int)]]
+
+sudoku box = [[just(1), nothing, nothing],
+              [nothing, just(3), nothing],
+              [nothing, nothing, just(2)]]
+
+dump(box)
+print(typeOf(box))

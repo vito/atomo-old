@@ -48,7 +48,7 @@ matchTypes e (Name a) (Name b) | a == b || length a == 1 || length b == 1 = Pass
 matchTypes e (Type (a, as)) (Type (b, bs)) | consEq && numArgsEq && argsEq = Pass (e, Type (a, as))
                                            | otherwise = Error $ TypeMismatch (Type (a, as)) (Type (b, bs))
                                            where
-                                               consEq = case matchTypes e a b of
+                                               consEq = case checkType e a b of
                                                              Pass _ -> True
                                                              _ -> False
                                                numArgsEq = length as == length bs

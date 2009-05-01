@@ -69,7 +69,9 @@ instance Show AtomoVal where
 fromAInt (AInt i) = i
 fromAInt (AValue "int" [AInt i] _) = i
 fromAChar (AChar c) = c
+fromAChar (AValue "char" [AChar c] _) = c
 fromADouble (ADouble d) = d
+fromADouble (AValue "double" [ADouble d] _) = d
 fromAVariable (AVariable n) = n
 fromAList (AList l) = l
 fromAList (AString l) = fromAList l
