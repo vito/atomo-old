@@ -1,0 +1,10 @@
+type string: [char]
+data bool: true | false
+
+(int, char, bool) foos = (1, '2', true)
+
+void menu([(string, void f(string))] choices):
+    dump(choices)
+
+menu([("Foo", print)])
+dump(foos)
