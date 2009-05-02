@@ -33,12 +33,12 @@ checkType e (Name [a]) _ = Pass (e, Name [a])
 checkType e (Func (Type (Name c, as), [])) t@(Type (Name d, _)) | c == d = Pass (e, t)
                                                                 | otherwise = Error $ TypeMismatch t (Type (Name c, as))
 checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
-                                                                  | otherwise = matchTypes e t f
+                                                                  | otherwise = checkType e t f
 checkType e a@(Name n) b = case getAnyType e n of
-                                Just t -> matchTypes e t b
+                                Just t -> checkType e t b
                                 Nothing -> matchTypes e a b
 checkType e a b@(Name n) = case getAnyType e n of
-                                Just t -> matchTypes e a t
+                                Just t -> checkType e a t
                                 Nothing -> matchTypes e a b
 checkType e a b = matchTypes e a b
 
@@ -89,13 +89,6 @@ verifyList e xs = case either id (\(h:ts) -> allType e h ts) $ checkTypes e xs [
                        Pass (e, t) -> Pass (e, Type (Name "[]", [t]))
                        e -> e
 
-verifyTuple :: CheckEnv -> [(Type, AtomoVal)] -> TypeCheck
-verifyTuple e [] = Pass (e, Name "tuple")
-verifyTuple e ((t, v):vs) = Pass (e, Name "tuple") -- Temporary, pending the new tuples setup
-                            {- case checkType e (exprType e v) t of -}
-                                 {- Pass (e, _) -> verifyTuple e vs -}
-                                 {- a -> a -}
-
 verifyHash :: CheckEnv -> [(String, (Type, AtomoVal))] -> TypeCheck
 verifyHash e [] = Pass (e, Name "hash")
 verifyHash e ((_, (t, v)):vs) = either id (\r -> case checkType e r t of
@@ -124,7 +117,7 @@ exprType e v = case checkExpr e v of
 
 checkExpr :: CheckEnv -> AtomoVal -> TypeCheck
 checkExpr e (AList as) = verifyList e as
-checkExpr e (ATuple as) = verifyTuple e as
+checkExpr e (ATuple as) = either id (\ts -> Pass (e, Type (Name "()", ts))) $ checkTypes e as []
 checkExpr e (AHash as) = verifyHash e as
 checkExpr e (ADefine t n v) = either id (\r -> checkType e t r >>*
                                                Pass (newEnv, t)) $ exprType e v

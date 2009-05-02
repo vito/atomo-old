@@ -46,19 +46,9 @@ apply e (AFunc t _ ps b) as  = do new <- liftIO $ nullScope
 apply e (AConstruct n _ d) as = return $ AValue n as d
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
-eval e v@(AInt _)           = return v
-eval e v@(AChar _)          = return v
-eval e v@(ADouble _)        = return v
-eval e v@(AValue _ _ _)     = return v
-eval e v@(APrimFunc _ _ _)  = return v
-eval e v@(AIOFunc _ _ _)    = return v
-eval e v@(AString _)        = return v
-eval e v@(AConstruct _ _ _) = return v
-eval e v@(AReturn _)        = return v
-eval e v@(AFunc _ n _ _)    = setGlobal e n v
-eval e v@(AType n _)        = setGlobal e n v
-eval e (ATuple vs)     = do tuple <- mapM (\(t, v) -> do val <- eval e v
-                                                         return (t, val)) vs
+eval e v@(AFunc _ n _ _) = setGlobal e n v
+eval e v@(AType n _)     = setGlobal e n v
+eval e (ATuple vs)     = do tuple <- mapM (eval e) vs
                             return $ ATuple tuple
 eval e (AHash vs)      = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
                                                              return (n, (t, val))) vs
@@ -78,6 +68,7 @@ eval e (ABlock es)     = evalAll e es
 eval e (AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
+eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
 evalAll e es = evalAll' e es ANone

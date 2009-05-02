@@ -85,6 +85,9 @@ colon      = char ':'
 eol        = try (string "\r\n") <|> try (string "\n\r") <|> try (string "\n") <|> try (string "\r") <?> "end of line"
 dot        = P.dot atomo
 identifier = P.identifier atomo
+ident      = do c <- P.identStart atomoDef
+                cs <- many (P.identLetter atomoDef)
+                return (c:cs)
 operator   = P.operator atomo
 reserved   = P.reserved atomo
 reservedOp = P.reservedOp atomo
@@ -103,25 +106,28 @@ getIndent = do pos <- getPosition
                return $ sourceColumn pos
 
 
+-- All possible expressions in the Atomo language.
+-- Expressions that begin with a reserved word (e.g.)
+-- `data' or `type' or `return') go first.
 aExpr :: Parser AtomoVal
-aExpr = try aVar
+aExpr = try aData
+    <|> try aNewType
+    <|> try aReturn
+    <|> try aIf
+    <|> try aClass
+    <|> try aDefine
+    <|> try aAssign
     <|> try aFunc
-    <|> try aAttribute
     <|> try aInfix
     <|> try aCall
-    <|> try aData
-    <|> try aClass
-    <|> try aIf
-    <|> try aAssign
-    <|> aReturn
+    <|> try aAttribute
+    <|> try aDouble
     <|> aList
     <|> aHash
     <|> aTuple
-    <|> try aDouble
     <|> aNumber
     <|> aString
     <|> aChar
-    <|> aNewType
     <|> aReference
 
 aTrackedExpr :: Parser (SourcePos, AtomoVal)
@@ -156,6 +162,8 @@ aSimpleType = try (do name <- identifier
           <|> try (do con <- identifier
                       args <- parens (commaSep aType)
                       return $ Type (Name con, args))
+          <|> try (do theTypes <- parens (commaSep aType)
+                      return $ Type (Name "()", theTypes))
           <|> try (do theType <- brackets aType
                       return $ Type (Name "[]", [theType]))
 
@@ -233,8 +241,9 @@ aFunc = do func <- aFuncHeader
 
 -- Data constructor
 aConstructor :: Parser (AtomoVal -> AtomoVal)
-aConstructor = do name <- identifier
+aConstructor = do name <- ident
                   params <- parens (commaSep aType) <|> return []
+                  whiteSpace
                   return $ AConstruct name params
 
 -- New data declaration
@@ -258,13 +267,13 @@ aIf = do reserved "if"
          return $ AIf cond code other
          
 -- Variable assignment
-aVar :: Parser AtomoVal
-aVar = do theType <- aType
-          names <- commaSep1 identifier
-          reservedOp "="
-          val <- aExpr
-          return $ ADefine theType (head names) val -- TODO: Multiple assignment
-       <?> "variable"
+aDefine :: Parser AtomoVal
+aDefine = do theType <- aType
+             names <- commaSep1 identifier
+             reservedOp "="
+             val <- aExpr
+             return $ ADefine theType (head names) val -- TODO: Multiple assignment
+          <?> "variable"
 
 -- Variable reassignment
 aAssign :: Parser AtomoVal
@@ -281,9 +290,7 @@ aList = do contents <- brackets $ commaSep aExpr
 
 -- Parse a tuple (immutable list of values of any type)
 aTuple :: Parser AtomoVal
-aTuple = do contents <- parens $ commaSep (do theType <- aType
-                                              expr <- aExpr
-                                              return (theType, expr))
+aTuple = do contents <- parens $ commaSep aExpr
             return $ ATuple contents
 
 -- Parse a hash (mutable, named contents of any type)
@@ -353,7 +360,7 @@ aInfix = do val <- buildExpressionParser table targets
                          call op a b = ACall (AVariable op) [a, b]
 
              targets = do val <- parens aExpr
-                             <|> try aVar
+                             <|> try aDefine
                              <|> try aCall
                              <|> try aIf
                              <|> try aAssign

@@ -15,7 +15,7 @@ data AtomoVal = AInt Integer
               | AChar Char
               | ADouble Double
               | AList [AtomoVal]
-              | ATuple [(Type, AtomoVal)]
+              | ATuple [AtomoVal]
               | AHash [(String, (Type, AtomoVal))]
               | AString AtomoVal -- AString == AList of AChars
               | AVariable String
@@ -121,7 +121,7 @@ getType (AChar _) = Name "char"
 getType (ADouble _) = Name "double"
 getType (AList []) = Type (Name "[]", [])
 getType (AList as) = listOf $ getType (head as)
-getType (ATuple _) = Name "tuple"
+getType (ATuple as) = Type (Name "()", map getType as)
 getType (AHash _) = Name "hash"
 getType (AString _) = listOf (Name "char")
 getType (AType n v) = v
@@ -160,8 +160,7 @@ pretty (AList str@(AChar _:_)) = show $ AString $ AList str
 pretty (AList list)     = "[" ++ (intercalate ", " (map pretty list)) ++ "]"
 pretty (AHash es)       = "{ " ++ (intercalate ", " (map prettyVal es)) ++ " }"
                           where prettyVal (n, (t, v)) = (prettyType t) ++ " " ++ n ++ ": " ++ pretty v
-pretty (ATuple vs)      = "(" ++ (intercalate ", " (map prettyVal vs)) ++ ")"
-                          where prettyVal (t, v) = (prettyType t) ++ " " ++ pretty v
+pretty (ATuple vs)      = "(" ++ (intercalate ", " (map pretty vs)) ++ ")"
 pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ _ v)  = pretty v
 pretty (AAssign _ v)    = pretty v
@@ -183,5 +182,6 @@ pretty a                = "TODO"
 prettyType :: Type -> String
 prettyType (Name a) = a
 prettyType (Type (Name "[]", [t])) = "[" ++ prettyType t ++ "]"
+prettyType (Type (Name "()", ts)) = "(" ++ intercalate ", " (map prettyType ts) ++ ")"
 prettyType (Type (a, ts)) = prettyType a ++ "(" ++ intercalate ", " (map prettyType ts) ++ ")"
 prettyType (Func (a, ts)) = prettyType a ++ " f(" ++ intercalate ", " (map prettyType ts) ++ ")"
