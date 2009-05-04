@@ -23,10 +23,10 @@ data AtomoVal = AInt Integer
               | AAttribute (AtomoVal, String)
               | AObject String [AtomoVal]
               | ADefine Type String AtomoVal
-              | AAssign String AtomoVal
+              | AMutate String AtomoVal
               | APrimFunc Type String [Type]
               | AIOFunc Type String [Type]
-              | AFunc Type String [(Type, String)] AtomoVal
+              | AFunc Type String [String] AtomoVal
               | ACall AtomoVal [AtomoVal]
               | ABlock [AtomoVal]
               | AData String [Type] [AtomoVal]
@@ -51,7 +51,7 @@ instance Show AtomoVal where
     show (AAttribute v) = "AAttribute " ++ show v
     show (AObject n v) = "AObject " ++ show n ++ " " ++ show v
     show (ADefine t n v) = "ADefine (" ++ show t ++ ") " ++ show n ++ " (" ++ show v ++ ")"
-    show (AAssign n v) = "AAssign " ++ show n ++ " " ++ show v
+    show (AMutate n v) = "AMutate " ++ show n ++ " " ++ show v
     show (APrimFunc t n ps) = "APrimFunc (" ++ show t ++ ") " ++ show n ++ " " ++ show ps
     show (AIOFunc t n ps) = "AIOFunc (" ++ show n ++ ") " ++ show n ++ " " ++ show ps
     show (AFunc t n ps b) = "AFunc (" ++ show t ++ ") " ++ show n ++ " " ++ show ps ++ " (" ++ show b ++ ")"
@@ -129,11 +129,11 @@ getType (AConstruct _ [] d@(AData n ps _)) = getType d
 getType (AConstruct _ ts d@(AData n ps _)) = Func (getType d, ts)
 getType (AData n [] _) = Name n
 getType (AData n as _) = Type (Name n, as)
-getType (AFunc t _ as _) = Func (t, map fst as)
+getType (AFunc t _ _ _) = t
 getType (APrimFunc t n as) = Func (t, as)
 getType (AIOFunc t n as) = Func (t, as)
 getType (AReturn r) = getType r
-getType (ADefine _ _ v) = getType v
+getType (ADefine t _ _) = t
 getType (AValue _ _ d@(AData n [] _)) = getType d
 getType (AValue c as (AData n ps cs)) = Type (Name n, args)
                                         where
@@ -146,7 +146,15 @@ getType (AValue c as (AData n ps cs)) = Type (Name n, args)
                                                                 | otherwise = argNames ps
 getType a = error ("Cannot get type of `" ++ pretty a ++ "'")
 
-getReturnType (AFunc t _ _ _) = t
+result :: Type -> Type
+result (Func (t, _)) = t
+result (Type (t, _)) = t
+
+args :: Type -> [Type]
+args (Func (_, ts)) = ts
+args (Type (_, ts)) = ts
+
+getReturnType (AFunc (Func (t, _)) _ _ _) = t
 getReturnType a = getType a
 
 pretty :: AtomoVal -> String
@@ -163,7 +171,7 @@ pretty (AHash es)       = "{ " ++ (intercalate ", " (map prettyVal es)) ++ " }"
 pretty (ATuple vs)      = "(" ++ (intercalate ", " (map pretty vs)) ++ ")"
 pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ _ v)  = pretty v
-pretty (AAssign _ v)    = pretty v
+pretty (AMutate _ v)    = pretty v
 pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
 pretty (APrimFunc _ n _) = "<Function Primitive (`" ++ n ++ "')>"
 pretty (AIOFunc _ n _)  = "<IO Primitive (`" ++ n ++ "')>"

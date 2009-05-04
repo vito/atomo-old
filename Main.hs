@@ -30,11 +30,11 @@ apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
 apply e (APrimFunc _ n _) as = liftThrows $ (getPrim n) as
 apply e (AIOFunc _ n _) as   = (getIOPrim n) as
 apply e (AFunc t _ ps b) as  = do new <- liftIO $ nullScope
-                                  patternMatch new (map snd ps) as
+                                  patternMatch new ps as
 
                                   -- Set local variables for arguments
                                   let env = (globalScope e, new)
-                                  zipWithM_ (setLocal env) (map snd ps) as
+                                  zipWithM_ (setLocal env) ps as
 
                                   -- Evaluate the function
                                   res <- eval env b
@@ -55,12 +55,12 @@ eval e (AHash vs)      = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
                             return $ AHash hash
 eval e (AList as)      = do list <- mapM (eval e) as
                             return $ AList list
-eval e (AVariable s)   = getAny e s
-eval e (ADefine t s v) = do val <- eval e v
-                            setLocal e s val
-eval e (AAssign s v)   = do val <- eval e v
-                            orig <- getAny e s
-                            setLocal e s val
+eval e (AVariable s)   = do v <- getAny e s
+                            case v of
+                                 (ABlock b) -> eval e v
+                                 a -> return a
+eval e (ADefine t s v) = setLocal e s v
+eval e (AMutate s v)   = mutateLocal e s v
 eval e (ACall f as)    = do fun <- eval e f
                             args <- mapM (eval e) as
                             apply e fun args

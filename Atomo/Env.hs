@@ -37,18 +37,19 @@ setVal e s v = do env <- liftIO $ readIORef e
 
                   case lookup s env of
                        Just ref -> liftIO $ writeIORef ref v
-                       Nothing -> error "Attempt to set undefined value."
+                       Nothing -> error $ "Attempt to mutate undefined value `" ++ s ++ "'"
 
                   return v
 
 defineVal :: Scope -> String -> AtomoVal -> IOThrowsError AtomoVal
-defineVal e s v = do defined <- liftIO $ isBound e s
-                     if defined
-                        then setVal e s v >> return v
-                        else liftIO $ do val <- newIORef v
-                                         env <- readIORef e
-                                         writeIORef e ((s, val) : env)
-                                         return v
+defineVal e s v = do val <- liftIO $ newIORef v
+                     env <- liftIO $ readIORef e
+
+                     case lookup s env of
+                          Nothing -> do liftIO $ writeIORef e ((s, val) : env)
+                                        return v
+                          Just r -> do val <- liftIO $ readIORef r
+                                       error $ "Multiple definitions of `" ++ s ++ "':\n\t" ++ show val ++ "\n\n\t" ++ show v
 
 getVal :: Scope -> String -> IOThrowsError AtomoVal
 getVal e s = do env <- liftIO $ readIORef e
@@ -59,8 +60,14 @@ getVal e s = do env <- liftIO $ readIORef e
 setLocal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
 setLocal e s v = defineVal (localScope e) s v
 
+mutateLocal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
+mutateLocal e s v = setVal (localScope e) s v
+
 setGlobal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
 setGlobal e s v = defineVal (globalScope e) s v
+
+mutateGlobal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
+mutateGlobal e s v = setVal (globalScope e) s v
 
 getLocal :: Env -> String -> IOThrowsError AtomoVal
 getLocal e s = getVal (localScope e) s

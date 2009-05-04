@@ -152,13 +152,13 @@ checkExpr e (AIf c t f) = either id (\r -> checkType e (Name "bool") r >>*
                                            checkExpr e f) $ exprType e c
 checkExpr e (ABlock as) = checkAll e as
 checkExpr e (AFunc t n ps b) = case checkExpr newEnv b of
-                                    Pass (e, r) -> case checkType e t r of
+                                    Pass (e, r) -> case checkType e (result t) r of
                                                         Pass (e, t) -> Pass (e, t)
                                                         a -> a
                                     a -> a
                                where
-                                   globalEnv = (n, Func (t, map fst ps)) : fst e
-                                   localEnv = map (\(a, b) -> (b, a)) ps ++ snd e
+                                   globalEnv = (n, t) : fst e
+                                   localEnv = zip ps (args t) ++ snd e
                                    newEnv = (globalEnv, localEnv)
 checkExpr e (AVariable n) = case getAnyType e n of
                                  Just t -> Pass (e, t)
