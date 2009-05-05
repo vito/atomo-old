@@ -15,7 +15,7 @@ nullScope :: IO Scope
 nullScope = newIORef []
 
 nullEnv :: IO Env
-nullEnv = do prims <- mapM (\(n, (a, f)) -> do val <- newIORef a
+nullEnv = do prims <- mapM (\(n, (a, f)) -> do val <- newIORef (lambdify a (ABlock [APrimCall n (map AVariable a)]))
                                                return (n, val)) primFuncs
              io <- mapM (\(n, (a, f)) -> do val <- newIORef a
                                             return (n, val)) ioPrims

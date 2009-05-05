@@ -75,11 +75,8 @@ charToPrim c = AValue "char" [AChar c] primChar
 getAIOPrim :: String -> AtomoVal
 getAIOPrim = fst . fromJust . (flip lookup ioPrims)
 
-getIOPrim :: String -> ([AtomoVal] -> IOThrowsError AtomoVal)
+getIOPrim :: String -> (AtomoVal -> IOThrowsError AtomoVal)
 getIOPrim = snd . fromJust . (flip lookup ioPrims)
-
-getAPrim :: String -> AtomoVal
-getAPrim = fst . fromJust . (flip lookup primFuncs)
 
 getPrim :: String -> ([AtomoVal] -> ThrowsError AtomoVal)
 getPrim = snd . fromJust . (flip lookup primFuncs)
@@ -94,17 +91,17 @@ primMul a b | isAInt a && isAInt b = intToPrim $ fromAInt a * fromAInt b
 primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
             | isADouble a && isADouble b = doubleToPrim $ fromADouble a / fromADouble b
 
-primFuncs :: [(String, (AtomoVal, [AtomoVal] -> ThrowsError AtomoVal))]
-primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
-            , ("==", (APrimFunc (Name "bool") "==" [Name "a", Name "a"], equalityFunc))
-            , ("/=", (APrimFunc (Name "bool") "/=" [Name "a", Name "a"], inequalityFunc))
-            , ("+", (APrimFunc (Name "a") "+" [Name "a", Name "a"], addFunc)) -- Where "a" is `int` or `double`.
-            , ("-", (APrimFunc (Name "a") "-" [Name "a", Name "a"], subFunc)) -- However, this needs to be expanded
-            , ("*", (APrimFunc (Name "a") "*" [Name "a", Name "a"], mulFunc)) -- to typeclasses eventually. (TODO)
-            , ("/", (APrimFunc (Name "a") "/" [Name "a", Name "a"], divFunc))
-            , ("<", (APrimFunc (Name "bool") "<" [Name "int", Name "int"], lessFunc))
-            , ("show", (APrimFunc (listOf $ Name "char") "show" [Name "a"], showFunc))
-            , ("typeOf", (APrimFunc (listOf $ Name "char") "typeOf" [Name "a"], typeFunc))
+primFuncs :: [(String, ([String], [AtomoVal] -> ThrowsError AtomoVal))]
+primFuncs = [ ("++", (["a", "b"], concatFunc))
+            , ("==", (["a", "b"], equalityFunc))
+            , ("/=", (["a", "b"], inequalityFunc))
+            , ("+", (["a", "b"], addFunc)) -- Where "a" is `int` or `double`.
+            , ("-", (["a", "b"], subFunc)) -- However, this needs to be expanded
+            , ("*", (["a", "b"], mulFunc)) -- to typeclasses eventually. (TODO)
+            , ("/", (["a", "b"], divFunc))
+            , ("<", (["a", "b"], lessFunc))
+            , ("show", (["a"], showFunc))
+            , ("typeOf", (["a"], typeFunc))
             ]
             where
                 addFunc [a, b] = return $ primAdd a b
@@ -122,7 +119,6 @@ primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
                 equalityFunc [(AList a), (AList b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AString a), (AString b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AVariable a), (AVariable b)] = return $ boolToPrim (a == b)
-                equalityFunc [(ADefine _ _ a), (ADefine _ _ b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AMutate _ a), (AMutate _ b)] = return $ boolToPrim (a == b)
                 equalityFunc [(AData a as _), (AData b bs _)] = return $ boolToPrim (a == b && as == bs)
                 equalityFunc [(AValue a as _), (AValue b bs _)] = return $ boolToPrim (a == b && as == bs)
@@ -136,11 +132,11 @@ primFuncs = [ ("++", (APrimFunc (list) "++" [list, list], concatFunc))
                 typeFunc [a] = return . toAString . prettyType $ getType a
 
 -- Primitive I/O functions
-ioPrims :: [(String, (AtomoVal, [AtomoVal] -> IOThrowsError AtomoVal))]
-ioPrims = [ ("print", (AIOFunc (Name "void") "print" [listOf (Name "char")], printFunc))
-          , ("dump", (AIOFunc (Name "void") "dump" [Name "a"], dumpFunc))
+ioPrims :: [(String, (AtomoVal, AtomoVal -> IOThrowsError AtomoVal))]
+ioPrims = [ ("print", (AIOFunc "print", printFunc))
+          , ("dump", (AIOFunc "dump", dumpFunc))
           ]
           where
-              printFunc xs = liftIO $ mapM_ (putStrLn . fromAString) xs >> return ANone
-              dumpFunc xs = liftIO $ mapM_ (putStrLn . pretty) xs >> return ANone
+              printFunc x = liftIO $ (putStrLn . fromAString) x >> return ANone
+              dumpFunc x = liftIO $ (putStrLn . pretty) x >> return ANone
 

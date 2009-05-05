@@ -30,10 +30,10 @@ checkType :: CheckEnv -> Type -> Type -> TypeCheck
 checkType e _ (Name [a]) = Pass (e, Name [a])
 checkType e (Name [a]) _ = Pass (e, Name [a])
 -- Constructors that take no argument should always match against their constructor
-checkType e (Func (Type (Name c, as), [])) t@(Type (Name d, _)) | c == d = Pass (e, t)
-                                                                | otherwise = Error $ TypeMismatch t (Type (Name c, as))
-checkType e t@(Type (Name a, [aa])) f@(Type (Name b, [Name [_]])) | a == b = Pass (e, t)
-                                                                  | otherwise = checkType e t f
+checkType e (Func None (Type (Name c) as)) t@(Type (Name d) _) | c == d = Pass (e, t)
+                                                               | otherwise = Error $ TypeMismatch t (Type (Name c) as)
+checkType e t@(Type (Name a) [aa]) f@(Type (Name b) [Name [_]]) | a == b = Pass (e, t)
+                                                                | otherwise = checkType e t f
 checkType e a@(Name n) b = case getAnyType e n of
                                 Just t -> checkType e t b
                                 Nothing -> matchTypes e a b
@@ -45,26 +45,16 @@ checkType e a b = matchTypes e a b
 matchTypes :: CheckEnv -> Type -> Type -> TypeCheck
 matchTypes e (Name a) (Name b) | a == b || length a == 1 || length b == 1 = Pass (e, Name a)
                                | otherwise = Error $ TypeMismatch (Name a) (Name b)
-matchTypes e (Type (a, as)) (Type (b, bs)) | consEq && numArgsEq && argsEq = Pass (e, Type (a, as))
-                                           | otherwise = Error $ TypeMismatch (Type (a, as)) (Type (b, bs))
-                                           where
-                                               consEq = case checkType e a b of
-                                                             Pass _ -> True
-                                                             _ -> False
-                                               numArgsEq = length as == length bs
-                                               argsEq = and $ map (\ a -> case a of
-                                                                               Pass _ -> True
-                                                                               _ -> False) (zipWith (checkType e) as bs)
-matchTypes e (Func (a, as)) (Func (b, bs)) | consEq && numArgsEq && argsEq = Pass (e, Func (a, as))
-                                           | otherwise = Error $ TypeMismatch (Func (a, as)) (Func (b, bs))
-                                           where
-                                               consEq = case checkType e a b of
-                                                             Pass _ -> True
-                                                             _ -> False
-                                               numArgsEq = length as == length bs
-                                               argsEq = and $ map (\ a -> case a of
-                                                                               Pass _ -> True
-                                                                               _ -> False) (zipWith (checkType e) as bs)
+matchTypes e (Type a as) (Type b bs) | consEq && numArgsEq && argsEq = Pass (e, Type a as)
+                                     | otherwise = Error $ TypeMismatch (Type a as) (Type b bs)
+                                     where
+                                         consEq = case checkType e a b of
+                                                       Pass _ -> True
+                                                       _ -> False
+                                         numArgsEq = length as == length bs
+                                         argsEq = and $ map (\ a -> case a of
+                                                                         Pass _ -> True
+                                                                         _ -> False) (zipWith (checkType e) as bs)
 matchTypes e a b = Error $ TypeMismatch a b
 
 -- Deep-replace a type with another type (used for replacing polymorphic types)
@@ -72,9 +62,9 @@ swapType :: [Type] -> Type -> Type -> [Type]
 swapType ts t n = swapType' ts [] t n
                   where
                       swapType' [] acc _ _ = acc
-                      swapType' (t@(Type (a, ts')):ts) acc f r = swapType' ts (acc ++ [Type (a, swapType ts' f r)]) f r
+                      swapType' (t@(Type a ts'):ts) acc f r = swapType' ts (acc ++ [Type a (swapType ts' f r)]) f r
                       swapType' (t@(Name _):ts) acc f r | t == f = swapType' ts (acc ++ [r]) f r
-                                                            | otherwise = swapType' ts (acc ++ [t]) f r
+                                                        | otherwise = swapType' ts (acc ++ [t]) f r
 
 -- Ensure that all AtomoVals match a specified type
 allType :: CheckEnv -> Type -> [Type] -> TypeCheck
@@ -84,9 +74,9 @@ allType e t (x:xs) = case checkType e x t of
                           a -> a
 
 verifyList :: CheckEnv -> [AtomoVal] -> TypeCheck
-verifyList e [] = Pass (e, Type (Name "[]", [Name "a"]))
+verifyList e [] = Pass (e, Type (Name "[]") [Name "a"])
 verifyList e xs = case either id (\(h:ts) -> allType e h ts) $ checkTypes e xs [] of
-                       Pass (e, t) -> Pass (e, Type (Name "[]", [t]))
+                       Pass (e, t) -> Pass (e, Type (Name "[]") [t])
                        e -> e
 
 verifyHash :: CheckEnv -> [(String, (Type, AtomoVal))] -> TypeCheck
@@ -98,7 +88,7 @@ verifyHash e ((_, (t, v)):vs) = either id (\r -> case checkType e r t of
 checkAST :: ThrowsError [(SourcePos, AtomoVal)] -> ThrowsError [AtomoVal]
 checkAST (Right a) = checkExprs env a (map snd a)
                      where
-                        funEnv = map (\(n, (a, f)) -> (n, getType a)) primFuncs
+                        funEnv = map (\(n, (a, f)) -> (n, toFunc (map Name a))) primFuncs
                         ioEnv = map (\(n, (a, f)) -> (n, getType a)) ioPrims
                         env = (funEnv ++ ioEnv, [])
 checkAST (Left err) = throwError err
@@ -117,58 +107,30 @@ exprType e v = case checkExpr e v of
 
 checkExpr :: CheckEnv -> AtomoVal -> TypeCheck
 checkExpr e (AList as) = verifyList e as
-checkExpr e (ATuple as) = either id (\ts -> Pass (e, Type (Name "()", ts))) $ checkTypes e as []
+checkExpr e (ATuple as) = either id (\ts -> Pass (e, Type (Name "()") ts)) $ checkTypes e as []
 checkExpr e (AHash as) = verifyHash e as
-checkExpr e (ADefine t n v) = either id (\r -> checkType e t r >>*
-                                               Pass (newEnv, t)) $ exprType e v
-                              where
-                                  newEnv = (fst e, (n, t) : snd e)
+checkExpr e (ADefine n v) = either id (\r -> Pass (newEnv r, r)) $ exprType e v
+                            where
+                                newEnv r = (fst e, (n, r) : snd e)
 checkExpr e (AData n [] cs) = Pass (newEnv, Name n)
                               where
                                   newGlobal = map (\c -> (fromAConstruct c, getType c)) cs ++ fst e
                                   newEnv = (newGlobal, snd e)
-checkExpr e (AData n as cs) = Pass (newEnv, Type (Name n, as))
+checkExpr e (AData n as cs) = Pass (newEnv, Type (Name n) as)
                               where
                                   newGlobal = map (\c -> (fromAConstruct c, getType c)) cs ++ fst e
                                   newEnv = (newGlobal, snd e)
-checkExpr e (ACall (AIOFunc t n ps) as) = either id (\ts -> checkArgs e ps ts >>*
-                                                            Pass (e, t)) $ checkTypes e as []
-checkExpr e (ACall (APrimFunc t n ps) as) = either id (\ts -> checkArgs e ps ts >>*
-                                                              Pass (e, t)) $  checkTypes e as []
-checkExpr e (ACall (AVariable n) as) = case getAnyType e n of
-                                            Just (Func (f, ps)) -> either id (\ts -> case checkArgs e ps ts of
-                                                                                          Poly (e, rs) -> Pass (e, findDiff f rs)
-                                                                                          a -> a) $ checkTypes e as []
-                                            Just a -> Error $ NotFunction n
-                                            Nothing -> Error $ UnboundVar n
-                                       where
-                                           findDiff d [] = d
-                                           findDiff d ((f, r):ts) | replaced /= d = replaced
-                                                                  | otherwise = findDiff d ts
-                                                                  where
-                                                                      replaced = head $ swapType [d] f r
 checkExpr e (AIf c t f) = either id (\r -> checkType e (Name "bool") r >>*
                                            checkExpr e t >>*
                                            checkExpr e f) $ exprType e c
 checkExpr e (ABlock as) = checkAll e as
-checkExpr e (AFunc t n ps b) = case checkExpr newEnv b of
-                                    Pass (e, r) -> case checkType e (result t) r of
-                                                        Pass (e, t) -> Pass (e, t)
-                                                        a -> a
-                                    a -> a
-                               where
-                                   globalEnv = (n, t) : fst e
-                                   localEnv = zip ps (args t) ++ snd e
-                                   newEnv = (globalEnv, localEnv)
 checkExpr e (AVariable n) = case getAnyType e n of
                                  Just t -> Pass (e, t)
                                  Nothing -> Error $ UnboundVar n
 checkExpr e (AValue n as d) = Pass (e, getType d)
-checkExpr e (AString as) = Pass (e, Type (Name "[]", [Name "char"]))
-checkExpr e (AConstruct _ [] (AData d [] _)) = Pass (e, Name d)
-checkExpr e (AConstruct _ [] (AData d ps _)) = Pass (e, Type (Name d, ps))
-checkExpr e (AConstruct _ as (AData d ps _)) = Pass (e, Func (Type (Name d, ps), as))
+checkExpr e (AString as) = Pass (e, Type (Name "[]") [Name "char"])
 checkExpr e (AType n t) = Pass (((n, t) : fst e, snd e), t)
+checkExpr e (AAnnot n t) = Pass (((n, t) : fst e, snd e), t)
 checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.
 
 -- Check all expressions and return the return type.

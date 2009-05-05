@@ -15,7 +15,6 @@ import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 import qualified Text.Parsec.Token as P
 
-
 -- Custom makeTokenParser with tweaked whiteSpace rules
 makeTokenParser languageDef
     = P.TokenParser{ P.identifier = identifier
@@ -450,7 +449,7 @@ aExpr = try aData
     <|> try aClass
     <|> try aMutate
     <|> try aDefine
-    <|> try aFunc
+    <|> try aTypeHeader
     <|> try aInfix
     <|> try aCall
     <|> try aAttribute
@@ -463,14 +462,22 @@ aExpr = try aData
     <|> aChar
     <|> aReference
 
-aTrackedExpr :: Parser (SourcePos, AtomoVal)
-aTrackedExpr = do pos <- getPosition
-                  expr <- aExpr
-                  return (pos, expr)
+aMainExpr :: Parser AtomoVal
+aMainExpr = try aData
+        <|> try aNewType
+        <|> try aClass
+        <|> try aDefine
+        <|> try aTypeHeader
+        <|> aCall
+
+aScriptExpr :: Parser (SourcePos, AtomoVal)
+aScriptExpr = do pos <- getPosition
+                 expr <- aMainExpr
+                 return (pos, expr)
 
 -- Reference (variable lookup)
 aReference :: Parser AtomoVal
-aReference = do name <- identifier <|> parens operator
+aReference = do name <- identifier <|> try (parens operator)
                 return $ AVariable name
              <?> "variable reference"
 
@@ -489,25 +496,26 @@ aAttribute = do target <- aReference
 
 -- Type, excluding functions
 aSimpleType :: Parser Type
-aSimpleType = try (do name <- identifier
-                      notFollowedBy (char '(')
-                      return (Name name))
-          <|> try (do con <- identifier
-                      args <- parens (commaSep aType)
-                      return $ Type (Name con, args))
+aSimpleType = try (do con <- identifier
+                      args <- aType `sepBy1` simpleSpace
+                      return $ Type (Name con) args)
           <|> try (do theTypes <- parens (commaSep aType)
-                      return $ Type (Name "()", theTypes))
+                      return $ Type (Name "()") theTypes)
           <|> try (do theType <- brackets aType
-                      return $ Type (Name "[]", [theType]))
+                      return $ Type (Name "[]") [theType])
+          <|> (identifier >>= return . Name)
 
 -- Type
 aType :: Parser Type
-aType = try (do ret <- aSimpleType <|> parens aType
-                anyChar
-                args <- parens (commaSep aType)
-                return $ Func (ret, args))
-    <|> aSimpleType
+aType = do types <- (aSimpleType <|> parens aType) `sepBy1` (symbol "->")
+           return $ toFunc types
         <?> "type declaration"
+
+-- Type header
+aTypeHeader = do name <- identifier <|> operator
+                 symbol "::"
+                 types <- aType
+                 return $ AAnnot name types
 
 aNewType :: Parser AtomoVal
 aNewType = do reserved "type"
@@ -557,19 +565,11 @@ aBlock = do colon
                                                   next <- aBlock' new i es
                                                   return $ x : next) <|> return es
 
--- Function
-aFunc :: Parser AtomoVal
-aFunc = do theType <- aType
-           name <- identifier <|> operator
-           args <- parens aArgs
-           code <- aBlock
-           return $ AFunc (Func (theType, map fst args)) name (map snd args) code
-        <?> "function"
 
 -- Data constructor
 aConstructor :: Parser (AtomoVal -> AtomoVal)
 aConstructor = do name <- ident
-                  params <- parens (commaSep aType) <|> return []
+                  params <- option [] $ parens (commaSep aType)
                   whiteSpace
                   return $ AConstruct name params
 
@@ -577,7 +577,7 @@ aConstructor = do name <- ident
 aData :: Parser AtomoVal
 aData = do reserved "data"
            name <- identifier
-           params <- parens (commaSep aType) <|> return []
+           params <- option [] $ parens (commaSep aType)
            colon
            optional newline
            whiteSpace
@@ -595,11 +595,11 @@ aIf = do reserved "if"
          
 -- Variable assignment
 aDefine :: Parser AtomoVal
-aDefine = do theType <- aType
-             name <- identifier
-             val <- aBlock
-             return $ ADefine theType name val
-          <?> "variable"
+aDefine = do name <- identifier <|> parens operator
+             args <- many identifier
+             code <- aBlock
+             return $ ADefine name $ lambdify args code
+          <?> "function"
 
 -- Variable reassignment
 aMutate :: Parser AtomoVal
@@ -649,24 +649,17 @@ aChar :: Parser AtomoVal
 aChar = charLiteral >>= return . charToPrim
         <?> "character"
 
--- Parameters to a function call
-aParams :: Parser [AtomoVal]
-aParams = parens (commaSep aExpr) <?> "function arguments"
-
 -- Function call (prefix)
 aCall :: Parser AtomoVal
-aCall = do name <- aReference <|> aAttribute
-           pos <- getPosition
-           params <- aParams <|> many1 (do a <- arg
-                                           optional simpleSpace
-                                           return a)
-           return $ ACall name params
+aCall = do name <- aReference <|> try (parens aCall) <|> try (parens aExpr)
+           args <- many arg
+           return $ callify args name
         <?> "function call"
         where
             arg = try aAttribute
               <|> try aDouble
-              <|> parens aIf
-              <|> parens aInfix
+              <|> try (parens aIf)
+              <|> try (parens aInfix)
               <|> parens aCall
               <|> aList
               <|> aHash
@@ -699,7 +692,7 @@ aInfix = do val <- buildExpressionParser table targets
                      ]
                      where
                          op s a = Infix ((reservedOp s >> return (call s)) <?> "operator") a
-                         call op a b = ACall (AVariable op) [a, b]
+                         call op a b = ACall (ACall (AVariable op) a) b
 
              targets = do val <- parens aExpr
                              <|> try aMutate
@@ -737,7 +730,7 @@ readExprs es = readOrThrow (many $ do x <- aExpr
                                       optional newline <|> eof
                                       return x) es
 
-readTrackedExprs :: String -> ThrowsError [(SourcePos, AtomoVal)]
-readTrackedExprs es = readOrThrow (many $ do x <- aTrackedExpr
-                                             optional newline <|> eof
-                                             return x) es
+readScript :: String -> ThrowsError [(SourcePos, AtomoVal)]
+readScript es = readOrThrow (many $ do x <- aScriptExpr
+                                       optional newline <|> eof
+                                       return x) es

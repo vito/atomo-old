@@ -22,52 +22,52 @@ primIf e (AValue "true" _ _)  a _ = eval e a
 primIf e (AValue "false" _ _) _ b = eval e b
 primIf e c a b = error (show c)
 
-patternMatch :: Scope -> [String] -> [AtomoVal] -> IOThrowsError ()
+patternMatch :: Scope -> String -> AtomoVal -> IOThrowsError ()
 patternMatch s ps as = return ()
 
 -- Function/Constructor application
-apply :: Env -> AtomoVal -> [AtomoVal] -> IOThrowsError AtomoVal
-apply e (APrimFunc _ n _) as = liftThrows $ (getPrim n) as
-apply e (AIOFunc _ n _) as   = (getIOPrim n) as
-apply e (AFunc t _ ps b) as  = do new <- liftIO $ nullScope
-                                  patternMatch new ps as
+apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
+apply e (AIOFunc n) a = (getIOPrim n) a
+apply e (ALambda p c bs) a = case c of
+                                  (ALambda p' c' bs') -> return $ ALambda p' c' ((p, a) : bs')
+                                  (ABlock c) -> do new <- liftIO $ nullScope
 
-                                  -- Set local variables for arguments
-                                  let env = (globalScope e, new)
-                                  zipWithM_ (setLocal env) ps as
+                                                   let env = (globalScope e, new)
+                                                   mapM_ (\(n, v) -> setLocal env n v) ((p, a) : bs)
 
-                                  -- Evaluate the function
-                                  res <- eval env b
-                                  returned <- (case res of
-                                                    AReturn r -> eval env r
-                                                    a -> return a)
 
-                                  return returned
-apply e (AConstruct n _ d) as = return $ AValue n as d
+                                                   res <- eval env (ABlock c)
+                                                   returned <- (case res of
+                                                                     AReturn r -> eval e r
+                                                                     a -> return a)
+
+                                                   return returned
+apply e b@(ABlock _) a = do res <- eval e b
+                            apply e res a
+apply e t ANone = eval e t
+apply _ t a = error ("Cannot apply `" ++ show a ++ "' on `" ++ show t ++ "'")
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
-eval e v@(AFunc _ n _ _) = setGlobal e n v
-eval e v@(AType n _)     = setGlobal e n v
-eval e (ATuple vs)     = do tuple <- mapM (eval e) vs
-                            return $ ATuple tuple
-eval e (AHash vs)      = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
-                                                             return (n, (t, val))) vs
-                            return $ AHash hash
-eval e (AList as)      = do list <- mapM (eval e) as
-                            return $ AList list
-eval e (AVariable s)   = do v <- getAny e s
-                            case v of
-                                 (ABlock b) -> eval e v
-                                 a -> return a
-eval e (ADefine t s v) = setLocal e s v
-eval e (AMutate s v)   = mutateLocal e s v
-eval e (ACall f as)    = do fun <- eval e f
-                            args <- mapM (eval e) as
-                            apply e fun args
+eval e v@(AType n _)  = setGlobal e n v
+eval e (ATuple vs)    = do tuple <- mapM (eval e) vs
+                           return $ ATuple tuple
+eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
+                                                            return (n, (t, val))) vs
+                           return $ AHash hash
+eval e (AList as)     = do list <- mapM (eval e) as
+                           return $ AList list
+eval e (AVariable s)  = getAny e s
+eval e (ADefine s v)  = setGlobal e s v
+eval e (AMutate s v)  = mutateLocal e s v
+eval e (ACall f a)    = do fun <- eval e f
+                           arg <- eval e a
+                           apply e fun arg
 eval e (ABlock es)     = evalAll e es
 eval e (AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
+eval e (APrimCall n as) = do args <- mapM (eval e) as
+                             liftThrows $ (getPrim n) args
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -88,10 +88,10 @@ evalAndPrint e s = evalString e s >>= putStrLn
 
 -- Execute a string
 execute :: Env -> String -> IO ()
-execute e s = do let parsed = checkAST $ readTrackedExprs s
+execute e s = do let parsed = checkAST $ readScript s
                  case parsed of -- Catch parse errors
                       Left err -> print err
-                      Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
+                      Right v -> do res <- runErrorT (evalAll e (extractValue parsed ++ [ACall (AVariable "main") ANone]))
                                     case res of
                                          Left err -> print err -- Runtime error
                                          Right v -> return ()
