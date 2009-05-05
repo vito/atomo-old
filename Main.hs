@@ -29,11 +29,11 @@ patternMatch s ps as = return ()
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 apply e (AIOFunc n) a = (getIOPrim n) a
 apply e (ALambda p c bs) a = case c of
-                                  (ALambda p' c' bs') -> return $ ALambda p' c' ((p, a) : bs')
+                                  (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (ABlock c) -> do new <- liftIO $ nullScope
 
                                                    let env = (globalScope e, new)
-                                                   mapM_ (\(n, v) -> setLocal env n v) ((p, a) : bs)
+                                                   mapM_ (\(n, v) -> setLocal env n v) $ ((p, a) : bs)
 
 
                                                    res <- eval env (ABlock c)
@@ -42,10 +42,8 @@ apply e (ALambda p c bs) a = case c of
                                                                      a -> return a)
 
                                                    return returned
-apply e b@(ABlock _) a = do res <- eval e b
-                            apply e res a
 apply e t ANone = eval e t
-apply _ t a = error ("Cannot apply `" ++ show a ++ "' on `" ++ show t ++ "'")
+apply _ t a = error ("Cannot apply `" ++ pretty a ++ "' on `" ++ pretty t ++ "'")
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
 eval e v@(AType n _)  = setGlobal e n v

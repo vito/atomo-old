@@ -188,6 +188,10 @@ pretty (AConstruct s ts _) = s ++ "(" ++ intercalate ", " (map prettyType ts) ++
 pretty (AValue v [] _)  = v
 pretty (AValue v as _)  = v ++ "(" ++ intercalate ", " (map pretty as) ++ ")"
 pretty (AAnnot n t)     = n ++ " :: " ++ prettyType t
+pretty v@(ALambda _ _ _) = "\\ " ++ intercalate " " (reverse $ lambdas v []) ++ "."
+                           where
+                               lambdas (ALambda n v _) acc = lambdas v (n : acc)
+                               lambdas _ acc = acc
 pretty ANone            = "None"
 pretty a                = "TODO -- " ++ show a
 
@@ -209,4 +213,4 @@ callify as t = callify' (reverse as) t
                where
                    callify' [] t = t
                    callify' [a] t = ACall t a
-                   callify' (a:as) t = ACall (callify as t) a
+                   callify' (a:as) t = ACall (callify' as t) a
