@@ -10,10 +10,14 @@ import Control.Monad
 import Control.Monad.Error
 import Data.List (intercalate, nub, sort)
 import Data.Char (isAlpha, toLower, toUpper, isSpace, digitToInt)
+import Debug.Trace
 import Text.Parsec
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 import qualified Text.Parsec.Token as P
+
+dump s x = trace (s ++ ": " ++ show x) (return ())
+debug x = trace (show x) x
 
 -- Custom makeTokenParser with tweaked whiteSpace rules
 makeTokenParser languageDef
@@ -656,18 +660,18 @@ aCall = do name <- aReference <|> try (parens aCall) <|> try (parens aExpr)
            return $ callify args name
         <?> "function call"
         where
-            arg = try aAttribute
+            arg = aReference
+              <|> try aAttribute
               <|> try aDouble
               <|> try (parens aIf)
               <|> try (parens aInfix)
-              <|> parens aCall
+              <|> try (parens aCall)
               <|> aList
               <|> aHash
               <|> aTuple
               <|> aNumber
               <|> aString
               <|> aChar
-              <|> aReference
 
 -- Call to predefined primitive function
 aInfix :: Parser AtomoVal

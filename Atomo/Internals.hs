@@ -211,6 +211,6 @@ lambdify (s:ss) b = ALambda s (lambdify ss b) []
 callify :: [AtomoVal] -> AtomoVal -> AtomoVal
 callify as t = callify' (reverse as) t
                where
-                   callify' [] t = t
+                   callify' [] t = ACall t ANone
                    callify' [a] t = ACall t a
                    callify' (a:as) t = ACall (callify' as t) a
