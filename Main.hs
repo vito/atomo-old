@@ -52,7 +52,7 @@ eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
                            return $ AHash hash
 eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
-eval e (AVariable n)  = getVal e n
+eval e (AVariable n)  = getVal e n >>= eval e
 eval e (ADefine n v)  = defineVal e n v
 eval e (AMutate n v)  = eval e v >>= mutateVal e n
 eval e (ACall f a)    = do fun <- eval e f

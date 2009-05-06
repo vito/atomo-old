@@ -355,6 +355,7 @@ makeTokenParser languageDef
     --whiteSpace
     whiteSpace = do spacing
                     skipMany (try $ spacing >> newline)
+                    spacing
 
 -- Atomo parser
 atomo :: P.TokenParser st
@@ -370,9 +371,9 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                         , P.reservedOpNames = ["=", "=>", "->"]
+                         , P.reservedOpNames = ["=", "=>", "->", "::"]
                          , P.reservedNames   = ["if", "else", "elseif", "while",
-                                                "for", "class", "data", "type",
+                                                "do", "class", "data", "type",
                                                 "where", "module", "infix",
                                                 "infixl", "infixr", "import",
                                                 "return"]
@@ -444,14 +445,15 @@ getIndent = do pos <- getPosition
 -- Expressions that begin with a reserved word (e.g.)
 -- `data' or `type' or `return') go first.
 aExpr :: Parser AtomoVal
-aExpr = try aData
-    <|> try aNewType
-    <|> try aReturn
-    <|> try aIf
-    <|> try aClass
-    <|> try aMutate
+aExpr = aLambda
+    <|> aData
+    <|> aNewType
+    <|> aReturn
+    <|> aIf
+    <|> aClass
+    <|> aMutate
     <|> try aDefine
-    <|> try aTypeHeader
+    <|> try aAnnot
     <|> try aInfix
     <|> try aCall
     <|> try aAttribute
@@ -469,7 +471,7 @@ aMainExpr = try aData
         <|> try aNewType
         <|> try aClass
         <|> try aDefine
-        <|> try aTypeHeader
+        <|> try aAnnot
 
 aScriptExpr :: Parser (SourcePos, AtomoVal)
 aScriptExpr = do pos <- getPosition
@@ -513,19 +515,28 @@ aType = do types <- (aSimpleType <|> parens aType) `sepBy1` (symbol "->")
         <?> "type declaration"
 
 -- Type header
-aTypeHeader = do name <- identifier <|> operator
-                 symbol "::"
-                 types <- aType
-                 return $ AAnnot name types
+aAnnot = do name <- identifier <|> operator
+            symbol "::"
+            types <- aType
+            return $ AAnnot name types
 
+-- Type composition
 aNewType :: Parser AtomoVal
 aNewType = do reserved "type"
               name <- identifier
               colon
-              spacing
+              whiteSpace
               theType <- aType
               return $ AType name theType
 
+-- Lambda
+aLambda :: Parser AtomoVal
+aLambda = do reserved "do"
+             params <- many identifier
+             code <- aBlock
+             return $ lambdify params code
+
+-- Pattern matching
 aPattern :: Parser String -- TODO: Finish this
 aPattern = parens (identifier <|> string "_")
 
@@ -550,7 +561,7 @@ aReturn = do reserved "return"
 aBlock :: Parser AtomoVal
 aBlock = do colon
             exprs <- (do newline
-                         spacing
+                         whiteSpace
                          i <- getIndent
                          aBlock' i i [])
                  <|> (spacing >> aExpr >>= return . (: []))
@@ -560,8 +571,7 @@ aBlock = do colon
              aBlock' :: Int -> Int -> [AtomoVal] -> Parser [AtomoVal]
              aBlock' p i es | i /= p = return es
                  {- pies!-} | otherwise = try (do x <- aExpr
-                                                  optional newline
-                                                  spacing
+                                                  whiteSpace
                                                   new <- getIndent
                                                   next <- aBlock' new i es
                                                   return $ x : next) <|> return es
@@ -579,8 +589,7 @@ aData = do reserved "data"
            name <- identifier
            params <- option [] $ parens (commaSep aType)
            colon
-           optional newline
-           spacing
+           whiteSpace
            constructors <- aConstructor `sepBy` (symbol "|")
            let d = AData name params (map ($ d) constructors)
            return d
@@ -624,7 +633,7 @@ aHash :: Parser AtomoVal
 aHash = do contents <- braces $ commaSep (do theType <- aType
                                              name <- identifier
                                              colon
-                                             spacing
+                                             whiteSpace
                                              expr <- aExpr
                                              return (name, (theType, expr)))
            return $ AHash contents
