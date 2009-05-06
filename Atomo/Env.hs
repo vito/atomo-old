@@ -15,7 +15,7 @@ nullScope :: IO Scope
 nullScope = newIORef []
 
 nullEnv :: IO Env
-nullEnv = do prims <- mapM (\(n, (a, f)) -> do val <- newIORef (lambdify a (ABlock [APrimCall n (map AVariable a)]))
+nullEnv = do prims <- mapM (\(n, (a, _)) -> do val <- newIORef (lambdify a (ABlock [APrimCall n (map AVariable a)]))
                                                return (n, val)) primFuncs
              io <- mapM (\(n, (a, f)) -> do val <- newIORef a
                                             return (n, val)) ioPrims
@@ -23,34 +23,23 @@ nullEnv = do prims <- mapM (\(n, (a, f)) -> do val <- newIORef (lambdify a (ABlo
              return [global]
 
 mutateVal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
-mutateVal e n v = do ref <- liftIO $ getRef e n
-                     case ref of
-                          Just r -> liftIO $ writeIORef r v
-                          Nothing -> error $ "Attempt to mutate undefined value `" ++ n ++ "'"
-
+mutateVal e n v = do ref <- getRef e n
+                     liftIO $ writeIORef ref v
                      return v
 
 defineVal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal
 defineVal e n v = do val <- liftIO $ newIORef v
                      env <- liftIO $ readIORef (head e)
-
-                     case lookup n env of
-                          Nothing -> do liftIO $ writeIORef (head e) ((n, val) : env)
-                                        return v
-                          Just r -> do val <- liftIO $ readIORef r
-                                       error $ "Multiple definitions of `" ++ n ++ "':\n\t" ++ pretty val ++ "\n\n\t" ++ pretty v
+                     liftIO $ writeIORef (head e) ((n, val) : env)
+                     return v
 
 getVal :: Env -> String -> IOThrowsError AtomoVal
-getVal [] n = error $ "Could not find variable `" ++ n ++ "'"
-getVal (s:ss) n = do env <- liftIO $ readIORef s
-                     case lookup n env of
-                          Just v -> (liftIO . readIORef) v >>= return
-                          Nothing -> getVal ss n
+getVal e n = getRef e n >>= liftIO . readIORef
 
-getRef :: Env -> String -> IO (Maybe (IORef AtomoVal))
-getRef [] n = return Nothing
-getRef (s:ss) n = do env <- readIORef s
+getRef :: Env -> String -> IOThrowsError (IORef AtomoVal)
+getRef [] n = error $ "Could not find variable `" ++ n ++ "'"
+getRef (s:ss) n = do env <- liftIO $ readIORef s
 
                      case lookup n env of
-                          Just v -> return $ Just v
+                          Just v -> return v
                           Nothing -> getRef ss n

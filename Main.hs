@@ -34,8 +34,6 @@ apply e (ALambda p c bs) a = case c of
 
                                                    let env = new : e
                                                    mapM_ (\(n, v) -> defineVal env n v) $ ((p, a) : bs)
-
-
                                                    res <- eval env (ABlock c)
                                                    returned <- (case res of
                                                                      AReturn r -> eval e r
