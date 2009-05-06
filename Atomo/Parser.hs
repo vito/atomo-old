@@ -226,7 +226,7 @@ makeTokenParser languageDef
 
 
     -- integers and naturals
-    int             = do{ f <- lexeme sign
+    int             = do{ f <- sign
                         ; n <- nat
                         ; return (f n)
                         }
@@ -349,42 +349,12 @@ makeTokenParser languageDef
         = lexeme (string name)
 
     lexeme p
-        = do{ x <- p; whiteSpace'; return x  }
+        = do{ x <- p; spacing; return x  }
 
 
     --whiteSpace
-    whiteSpace = do whiteSpace'
-                    skipMany (try $ whiteSpace' >> newline)
-
-    whiteSpace' | noLine && noMulti  = skipMany (simpleSpace <?> "")
-                | noLine             = skipMany (simpleSpace <|> multiLineComment <?> "")
-                | noMulti            = skipMany (simpleSpace <|> oneLineComment <?> "")
-                | otherwise          = skipMany (simpleSpace <|> oneLineComment <|> multiLineComment <?> "")
-                where
-                    noLine  = null (P.commentLine languageDef)
-                    noMulti = null (P.commentStart languageDef)
-
-    oneLineComment = try (string (P.commentLine languageDef)) >> skipMany (satisfy (/= '\n'))
-
-    multiLineComment = try (string (P.commentStart languageDef)) >> inComment
-
-    inComment | P.nestedComments languageDef  = inCommentMulti
-              | otherwise                  = inCommentSingle
-
-    inCommentMulti = (try (string (P.commentEnd languageDef)) >> return ())
-                 <|> (multiLineComment >> inCommentMulti)
-                 <|> (skipMany1 (noneOf startEnd) >> inCommentMulti)
-                 <|> (oneOf startEnd >> inCommentMulti)
-                     <?> "end of comment"
-                   where
-                       startEnd = nub (P.commentEnd languageDef ++ P.commentStart languageDef)
-
-    inCommentSingle = (try (string (P.commentEnd languageDef)) >> return ())
-                  <|> (skipMany1 (noneOf startEnd) >> inCommentSingle)
-                  <|> (oneOf startEnd >> inCommentSingle)
-                      <?> "end of comment"
-                    where
-                        startEnd   = nub (P.commentEnd languageDef ++ P.commentStart languageDef)
+    whiteSpace = do spacing
+                    skipMany (try $ spacing >> newline)
 
 -- Atomo parser
 atomo :: P.TokenParser st
@@ -411,6 +381,34 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
 
 whiteSpace    = P.whiteSpace atomo
 simpleSpace   = skipMany1 $ satisfy (`elem` " \t\f\v\xa0")
+spacing = skipMany spacing1
+spacing1 | noLine && noMulti  = simpleSpace <?> ""
+         | noLine             = simpleSpace <|> multiLineComment <?> ""
+         | noMulti            = simpleSpace <|> oneLineComment <?> ""
+         | otherwise          = simpleSpace <|> oneLineComment <|> multiLineComment <?> ""
+         where
+             noLine  = null (P.commentLine atomoDef)
+             noMulti = null (P.commentStart atomoDef)
+oneLineComment = try (string (P.commentLine atomoDef)) >> skipMany (satisfy (/= '\n'))
+multiLineComment = try (string (P.commentStart atomoDef)) >> inComment
+inComment | P.nestedComments atomoDef  = inCommentMulti
+          | otherwise                  = inCommentSingle
+
+inCommentMulti = (try (string (P.commentEnd atomoDef)) >> return ())
+             <|> (multiLineComment >> inCommentMulti)
+             <|> (skipMany1 (noneOf startEnd) >> inCommentMulti)
+             <|> (oneOf startEnd >> inCommentMulti)
+                 <?> "end of comment"
+               where
+                   startEnd = nub (P.commentEnd atomoDef ++ P.commentStart atomoDef)
+
+inCommentSingle = (try (string (P.commentEnd atomoDef)) >> return ())
+              <|> (skipMany1 (noneOf startEnd) >> inCommentSingle)
+              <|> (oneOf startEnd >> inCommentSingle)
+                  <?> "end of comment"
+                where
+                    startEnd   = nub (P.commentEnd atomoDef ++ P.commentStart atomoDef)
+
 parens        = P.parens atomo
 brackets      = P.brackets atomo
 braces        = P.braces atomo
@@ -418,7 +416,7 @@ comma         = P.comma atomo
 commaSep      = P.commaSep atomo
 commaSep1     = P.commaSep1 atomo
 colon         = char ':'
-eol           = try (string "\r\n") <|> try (string "\n\r") <|> try (string "\n") <|> try (string "\r") <?> "end of line"
+eol           = newline >> return ()
 dot           = P.dot atomo
 identifier    = P.identifier atomo
 ident         = do c <- P.identStart atomoDef
@@ -472,11 +470,10 @@ aMainExpr = try aData
         <|> try aClass
         <|> try aDefine
         <|> try aTypeHeader
-        <|> aCall
 
 aScriptExpr :: Parser (SourcePos, AtomoVal)
 aScriptExpr = do pos <- getPosition
-                 expr <- aMainExpr
+                 expr <- aExpr
                  return (pos, expr)
 
 -- Reference (variable lookup)
@@ -501,7 +498,7 @@ aAttribute = do target <- aReference
 -- Type, excluding functions
 aSimpleType :: Parser Type
 aSimpleType = try (do con <- identifier
-                      args <- aType `sepBy1` simpleSpace
+                      args <- aType `sepBy1` spacing1
                       return $ Type (Name con) args)
           <|> try (do theTypes <- parens (commaSep aType)
                       return $ Type (Name "()") theTypes)
@@ -525,7 +522,7 @@ aNewType :: Parser AtomoVal
 aNewType = do reserved "type"
               name <- identifier
               colon
-              whiteSpace
+              spacing
               theType <- aType
               return $ AType name theType
 
@@ -553,10 +550,10 @@ aReturn = do reserved "return"
 aBlock :: Parser AtomoVal
 aBlock = do colon
             exprs <- (do newline
-                         whiteSpace
+                         spacing
                          i <- getIndent
                          aBlock' i i [])
-                 <|> (whiteSpace >> aExpr >>= return . (: []))
+                 <|> (spacing >> aExpr >>= return . (: []))
             return $ ABlock exprs
          <?> "block"
          where
@@ -564,7 +561,7 @@ aBlock = do colon
              aBlock' p i es | i /= p = return es
                  {- pies!-} | otherwise = try (do x <- aExpr
                                                   optional newline
-                                                  whiteSpace
+                                                  spacing
                                                   new <- getIndent
                                                   next <- aBlock' new i es
                                                   return $ x : next) <|> return es
@@ -574,7 +571,6 @@ aBlock = do colon
 aConstructor :: Parser (AtomoVal -> AtomoVal)
 aConstructor = do name <- ident
                   params <- option [] $ parens (commaSep aType)
-                  whiteSpace
                   return $ AConstruct name params
 
 -- New data declaration
@@ -584,7 +580,7 @@ aData = do reserved "data"
            params <- option [] $ parens (commaSep aType)
            colon
            optional newline
-           whiteSpace
+           spacing
            constructors <- aConstructor `sepBy` (symbol "|")
            let d = AData name params (map ($ d) constructors)
            return d
@@ -603,7 +599,7 @@ aDefine = do name <- identifier <|> parens operator
              args <- many identifier
              code <- aBlock
              return $ ADefine name $ lambdify args code
-          <?> "function"
+          <?> "definition"
 
 -- Variable reassignment
 aMutate :: Parser AtomoVal
@@ -628,7 +624,7 @@ aHash :: Parser AtomoVal
 aHash = do contents <- braces $ commaSep (do theType <- aType
                                              name <- identifier
                                              colon
-                                             whiteSpace
+                                             spacing
                                              expr <- aExpr
                                              return (name, (theType, expr)))
            return $ AHash contents
@@ -655,13 +651,13 @@ aChar = charLiteral >>= return . charToPrim
 
 -- Function call (prefix)
 aCall :: Parser AtomoVal
-aCall = do name <- aReference <|> try (parens aCall) <|> try (parens aExpr)
-           args <- many arg
+aCall = do name <- aReference <|> try (parens aExpr)
+           pos <- getPosition
+           args <- many $ try arg
            return $ callify args name
         <?> "function call"
         where
-            arg = aReference
-              <|> try aAttribute
+            arg = try aAttribute
               <|> try aDouble
               <|> try (parens aIf)
               <|> try (parens aInfix)
@@ -669,9 +665,10 @@ aCall = do name <- aReference <|> try (parens aCall) <|> try (parens aExpr)
               <|> aList
               <|> aHash
               <|> aTuple
-              <|> aNumber
+              <|> aReference
               <|> aString
               <|> aChar
+              <|> aNumber
 
 -- Call to predefined primitive function
 aInfix :: Parser AtomoVal
@@ -696,23 +693,18 @@ aInfix = do val <- buildExpressionParser table targets
                      ]
                      where
                          op s a = Infix ((reservedOp s >> return (call s)) <?> "operator") a
-                         call op a b = ACall (ACall (AVariable op) a) b
+                         call op a b = callify [a, b] (AVariable op)
 
-             targets = do val <- parens aExpr
-                             <|> try aMutate
-                             <|> try aDefine
-                             <|> try aCall
-                             <|> try aIf
-                             <|> try aDouble
-                             <|> aList
-                             <|> aTuple
-                             <|> aHash
-                             <|> aNumber
-                             <|> aString
-                             <|> aChar
-                             <|> aReference
-                          whiteSpace
-                          return val
+             targets = try aCall
+                   <|> try aIf
+                   <|> try aDouble
+                   <|> aList
+                   <|> aTuple
+                   <|> aHash
+                   <|> aNumber
+                   <|> aString
+                   <|> aChar
+                   <|> aReference
 
 
 -- Parse a string or throw any errors
@@ -731,10 +723,10 @@ readExpr = readOrThrow aExpr
 -- Read all expressions in a string
 readExprs :: String -> ThrowsError [AtomoVal]
 readExprs es = readOrThrow (many $ do x <- aExpr
-                                      optional newline <|> eof
+                                      optional eol <|> eof
                                       return x) es
 
 readScript :: String -> ThrowsError [(SourcePos, AtomoVal)]
 readScript es = readOrThrow (many $ do x <- aScriptExpr
-                                       optional newline <|> eof
+                                       optional eol <|> eof
                                        return x) es

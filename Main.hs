@@ -32,8 +32,8 @@ apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (ABlock c) -> do new <- liftIO $ nullScope
 
-                                                   let env = (globalScope e, new)
-                                                   mapM_ (\(n, v) -> setLocal env n v) $ ((p, a) : bs)
+                                                   let env = new : e
+                                                   mapM_ (\(n, v) -> defineVal env n v) $ ((p, a) : bs)
 
 
                                                    res <- eval env (ABlock c)
@@ -46,7 +46,7 @@ apply e t ANone = eval e t
 apply _ t a = error ("Cannot apply `" ++ pretty a ++ "' on `" ++ pretty t ++ "'")
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
-eval e v@(AType n _)  = setGlobal e n v
+eval e v@(AType n _)  = defineVal e n v
 eval e (ATuple vs)    = do tuple <- mapM (eval e) vs
                            return $ ATuple tuple
 eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
@@ -54,14 +54,14 @@ eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
                            return $ AHash hash
 eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
-eval e (AVariable s)  = getAny e s
-eval e (ADefine s v)  = setGlobal e s v
-eval e (AMutate s v)  = mutateLocal e s v
+eval e (AVariable n)  = getVal e n
+eval e (ADefine n v)  = defineVal e n v
+eval e (AMutate n v)  = mutateVal e n v
 eval e (ACall f a)    = do fun <- eval e f
                            arg <- eval e a
                            apply e fun arg
 eval e (ABlock es)     = evalAll e es
-eval e (AData s _ cs)  = mapM_ (\c -> setGlobal e (fromAConstruct c) c) cs >> return ANone
+eval e (AData s _ cs)  = mapM_ (\c -> defineVal e (fromAConstruct c) c) cs >> return ANone
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e (APrimCall n as) = do args <- mapM (eval e) as
