@@ -54,7 +54,7 @@ eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
 eval e (AVariable n)  = getVal e n
 eval e (ADefine n v)  = defineVal e n v
-eval e (AMutate n v)  = mutateVal e n v
+eval e (AMutate n v)  = eval e v >>= mutateVal e n
 eval e (ACall f a)    = do fun <- eval e f
                            arg <- eval e a
                            apply e fun arg
