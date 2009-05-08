@@ -1,19 +1,24 @@
-type grid: [[int]]
+type Grid: [[Int]]
 
-grid mat = [[1, 2, 3, 4],
-            [4, 1, 2, 3],
-            [3, 4, 1, 2],
-            [2, 3, 4, 1]]
+mat :: Grid
+mat: [[1, 2, 3, 4],
+      [4, 1, 2, 3],
+      [3, 4, 1, 2],
+      [2, 3, 4, 1]]
 
-dump(mat)
-print(typeOf(mat))
+data Maybe a: Nothing | Just a
+data Either a b: Left a | Right b
+data Foo a b: Bar a b
 
-data maybe(a): nothing | just(a)
-type sudoku: [[maybe(int)]]
+type Sudoku: [[Maybe Int]]
 
-sudoku box = [[just(1), nothing, nothing],
-              [nothing, just(3), nothing],
-              [nothing, nothing, just(2)]]
+box :: Sudoku
+box: [[Just 1, Nothing, Nothing],
+      [Nothing, Just 3, Nothing],
+      [Nothing, Nothing, Just 2]]
 
-dump(box)
-print(typeOf(box))
+main:
+    dump mat
+
+    dump box
+

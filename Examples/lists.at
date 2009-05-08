@@ -1,18 +1,16 @@
-data list(a): null | cons(a, list(a))
+data List a: Null | Cons a (List a)
 
-list(int) a = cons(1, cons(2, null))
-[int] b = [1, 2]
+a :: List Int
+a: cons 1 (cons 2 null)
+b: [1, 2]
 
-list(list(int)) c = cons(cons(1, cons(2, null)), null)
-[[int]] d = [[1, 2]]
+a :: List (List Int)
+c: cons (cons 1 (cons 2 null)) null
+d: [[1, 2]]
 
-dump(a)
-dump(b)
-dump(c)
-dump(d)
-print(typeOf(a))
-print(typeOf(b))
-print(typeOf(c))
-print(typeOf(d))
+dump a
+dump b
+dump c
+dump d
 
-{- dump(cons(1, cons(2, cons("three", null)))) -- ERROR! -}
+dump (cons 1 (cons 2 (cons "three" null))) -- ERROR!

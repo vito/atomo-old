@@ -27,19 +27,25 @@ patternMatch s ps as = return ()
 
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
-apply e (AIOFunc n) a = (getIOPrim n) a
 apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
-                                  (ABlock c) -> do new <- liftIO $ nullScope
-
-                                                   let env = new : e
-                                                   mapM_ (\(n, v) -> defineVal env n v) $ ((p, a) : bs)
+                                  (AValue n as d) -> do env <- bind
+                                                        args <- mapM (eval env) as
+                                                        return $ AValue n args d
+                                  (ABlock c) -> do env <- bind
+                                                   
                                                    res <- eval env (ABlock c)
                                                    returned <- (case res of
                                                                      AReturn r -> eval e r
                                                                      a -> return a)
 
                                                    return returned
+                             where
+                                 bind = do new <- liftIO $ nullScope
+                                           let env = new : e
+                                           mapM_ (\(n, v) -> defineVal env n v) $ ((p, a) : bs)
+                                           return env
+                                              
 apply e t ANone = eval e t
 apply _ t a = error ("Cannot apply `" ++ pretty a ++ "' on `" ++ pretty t ++ "'")
 
@@ -59,11 +65,14 @@ eval e (ACall f a)    = do fun <- eval e f
                            arg <- eval e a
                            apply e fun arg
 eval e (ABlock es)     = evalAll e es
-eval e (AData s _ cs)  = mapM_ (\c -> defineVal e (fromAConstruct c) c) cs >> return ANone
+eval e (AData s _ cs)  = mapM_ (\c -> defineVal e (fromAConstruct c) (cons c)) cs >> return ANone
+                         where
+                             cons (AConstruct n ts d) = lambdify as (AValue n (map AVariable as) d)
+                                                        where as = map (\c -> [c]) $ take (length ts) ['a'..]
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e (APrimCall n as) = do args <- mapM (eval e) as
-                             liftThrows $ (getPrim n) args
+                             (getPrim n) args
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal

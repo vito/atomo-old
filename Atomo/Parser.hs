@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoMonomorphismRestriction, RelaxedPolyRec #-}
 
 module Atomo.Parser where
 
@@ -11,13 +11,18 @@ import Control.Monad.Error
 import Data.List (intercalate, nub, sort)
 import Data.Char (isAlpha, toLower, toUpper, isSpace, digitToInt)
 import Debug.Trace
-import Text.Parsec
+import Text.Parsec hiding (sepBy, sepBy1)
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 import qualified Text.Parsec.Token as P
 
-dump s x = trace (s ++ ": " ++ show x) (return ())
-debug x = trace (show x) x
+sepBy p sep         = sepBy1 p sep <|> return []
+
+sepBy1 p sep        = do{ x <- p
+                        ; whiteSpace
+                        ; xs <- many (sep >> whiteSpace >> p)
+                        ; return (x:xs)
+                        }
 
 -- Custom makeTokenParser with tweaked whiteSpace rules
 makeTokenParser languageDef
@@ -475,7 +480,7 @@ aMainExpr = try aData
 
 aScriptExpr :: Parser (SourcePos, AtomoVal)
 aScriptExpr = do pos <- getPosition
-                 expr <- aExpr
+                 expr <- aMainExpr
                  return (pos, expr)
 
 -- Reference (variable lookup)
@@ -579,15 +584,15 @@ aBlock = do colon
 
 -- Data constructor
 aConstructor :: Parser (AtomoVal -> AtomoVal)
-aConstructor = do name <- ident
-                  params <- option [] $ parens (commaSep aType)
+aConstructor = do name <- identifier
+                  params <- many aType
                   return $ AConstruct name params
 
 -- New data declaration
 aData :: Parser AtomoVal
 aData = do reserved "data"
            name <- identifier
-           params <- option [] $ parens (commaSep aType)
+           params <- many aType
            colon
            whiteSpace
            constructors <- aConstructor `sepBy` (symbol "|")
@@ -738,4 +743,5 @@ readExprs es = readOrThrow (many $ do x <- aExpr
 readScript :: String -> ThrowsError [(SourcePos, AtomoVal)]
 readScript es = readOrThrow (many $ do x <- aScriptExpr
                                        optional eol <|> eof
+                                       whiteSpace
                                        return x) es

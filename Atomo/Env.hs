@@ -2,7 +2,7 @@ module Atomo.Env where
 
 import Atomo.Error
 import Atomo.Internals
-import Atomo.Primitive (primFuncs, ioPrims)
+import Atomo.Primitive (primFuncs)
 
 import Control.Monad.Error
 import Data.IORef
@@ -17,9 +17,7 @@ nullScope = newIORef []
 nullEnv :: IO Env
 nullEnv = do prims <- mapM (\(n, (a, _)) -> do val <- newIORef (lambdify a (ABlock [APrimCall n (map AVariable a)]))
                                                return (n, val)) primFuncs
-             io <- mapM (\(n, (a, f)) -> do val <- newIORef a
-                                            return (n, val)) ioPrims
-             global <- newIORef (prims ++ io)
+             global <- newIORef prims
              return [global]
 
 mutateVal :: Env -> String -> AtomoVal -> IOThrowsError AtomoVal

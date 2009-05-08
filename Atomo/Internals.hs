@@ -2,8 +2,12 @@ module Atomo.Internals where
 
 import Control.Monad.Error
 import Data.List (intercalate)
+import Debug.Trace
 import Text.Parsec (ParseError)
 import Text.Parsec.Pos (newPos, sourceName, sourceLine, sourceColumn, SourcePos)
+
+dump s x = trace (s ++ ": " ++ show x) (return ())
+debug x = trace (show x) x
 
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
@@ -25,8 +29,6 @@ data AtomoVal = AInt Integer
               | ADefine String AtomoVal
               | AMutate String AtomoVal
               | APrimCall String [AtomoVal]
-              | APrimFunc String
-              | AIOFunc String
               | ALambda String AtomoVal [(String, AtomoVal)]
               | ACall AtomoVal AtomoVal
               | ABlock [AtomoVal]
@@ -55,8 +57,6 @@ instance Show AtomoVal where
     show (ADefine n v) = "ADefine " ++ show n ++ " (" ++ show v ++ ")"
     show (AMutate n v) = "AMutate " ++ show n ++ " " ++ show v
     show (APrimCall n ps) = "APrimCall " ++ show n ++ " " ++ show ps
-    show (APrimFunc n) = "APrimFunc " ++ show n
-    show (AIOFunc n) = "AIOFunc " ++ show n
     show (ALambda p c bs) = "ALambda " ++ show p ++ " (" ++ show c ++ ") " ++ show bs
     show (ACall t a) = "ACall (" ++ show t ++ ") (" ++ show a ++ ")"
     show (ABlock vs) = "ABlock " ++ show vs
@@ -71,11 +71,11 @@ instance Show AtomoVal where
 
 
 fromAInt (AInt i) = i
-fromAInt (AValue "int" [AInt i] _) = i
+fromAInt (AValue "Int" [AInt i] _) = i
 fromAChar (AChar c) = c
-fromAChar (AValue "char" [AChar c] _) = c
+fromAChar (AValue "Char" [AChar c] _) = c
 fromADouble (ADouble d) = d
-fromADouble (AValue "double" [ADouble d] _) = d
+fromADouble (AValue "Double" [ADouble d] _) = d
 fromAVariable (AVariable n) = n
 fromAList (AList l) = l
 fromAList (AString l) = fromAList l
@@ -120,36 +120,6 @@ prettyPos :: SourcePos -> String
 prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
             | otherwise = "`" ++ sourceName p ++ "', line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
 
-getType :: AtomoVal -> Type
-getType (AChar _) = Name "char"
-getType (ADouble _) = Name "double"
-getType (AList []) = Type (Name "[]") []
-getType (AList as) = listOf $ getType (head as)
-getType (ATuple as) = Type (Name "()") $ map getType as
-getType (AHash _) = Name "hash"
-getType (AString _) = listOf (Name "char")
-getType (AType n v) = v
-getType (AConstruct _ [] d@(AData n ps _)) = getType d
-getType (AConstruct _ ts d@(AData n ps _)) = foldr Func (getType d) ts
-getType (AData n [] _) = Name n
-getType (AData n as _) = Type (Name n) as
-getType (ALambda _ b _) = undefined -- TODO
-getType (APrimFunc n) = undefined
-getType (AIOFunc n) = undefined
-getType (AReturn r) = getType r
-getType (ADefine _ _) = undefined
-getType (AValue _ _ d@(AData n [] _)) = getType d
-getType (AValue c as (AData n ps cs)) = Type (Name n) args
-                                        where
-                                            args = map (\ a -> case lookup a values of
-                                                                    Just v -> getType v
-                                                                    Nothing -> a) ps
-                                            values = zip (argNames cs) as
-                                            argNames [] = []
-                                            argNames ((AConstruct n v _):ps) | n == c = v
-                                                                | otherwise = argNames ps
-getType a = error ("Cannot get type of `" ++ pretty a ++ "'")
-
 result :: Type -> Type
 result (Func _ t) = t
 
@@ -165,9 +135,9 @@ pretty :: AtomoVal -> String
 pretty (AInt int)       = show int
 pretty (AChar char)     = show char
 pretty (ADouble double) = show double
-pretty (AValue "int" [AInt i] _) = show i
-pretty (AValue "double" [ADouble d] _) = show d
-pretty (AValue "char" [AChar c] _) = show c
+pretty (AValue "Int" [AInt i] _) = show i
+pretty (AValue "Iouble" [ADouble d] _) = show d
+pretty (AValue "Char" [AChar c] _) = show c
 pretty (AList str@(AChar _:_)) = show $ AString $ AList str
 pretty (AList list)     = "[" ++ (intercalate ", " (map pretty list)) ++ "]"
 pretty (AHash es)       = "{ " ++ (intercalate ", " (map prettyVal es)) ++ " }"
@@ -177,16 +147,14 @@ pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ v)    = pretty v
 pretty (AMutate _ v)    = pretty v
 pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
-pretty (APrimFunc n)    = "<Function Primitive (`" ++ n ++ "')>"
-pretty (AIOFunc n)      = "<IO Primitive (`" ++ n ++ "')>"
 pretty (ACall f a)      = "<Call (`" ++ pretty f ++ "') (`" ++ pretty a ++ "')>"
 pretty s@(AString _)    = show $ fromAString s
 pretty (ABlock es)      = intercalate "\n" $ map pretty es
 pretty (AData s as _)   = prettyType $ Type (Name s) as
 pretty (AConstruct s [] _) = s
-pretty (AConstruct s ts _) = s ++ "(" ++ intercalate ", " (map prettyType ts) ++ ")"
+pretty (AConstruct s ts _) = s ++ " " ++ intercalate " " (map prettyType ts)
 pretty (AValue v [] _)  = v
-pretty (AValue v as _)  = v ++ "(" ++ intercalate ", " (map pretty as) ++ ")"
+pretty (AValue v as _)  = v ++ " " ++ intercalate " " (map pretty as)
 pretty (AAnnot n t)     = n ++ " :: " ++ prettyType t
 pretty v@(ALambda _ _ _) = "\\ " ++ intercalate " " (reverse $ lambdas v []) ++ "."
                            where
@@ -199,8 +167,8 @@ prettyType :: Type -> String
 prettyType (Name a) = a
 prettyType (Type (Name "[]") [t]) = "[" ++ prettyType t ++ "]"
 prettyType (Type (Name "()") ts) = "(" ++ intercalate ", " (map prettyType ts) ++ ")"
-prettyType (Type a ts) = prettyType a ++ "(" ++ intercalate ", " (map prettyType ts) ++ ")"
-prettyType (Func None b) = "(" ++ prettyType b ++ ")"
+prettyType (Type a ts) = prettyType a ++ " " ++ intercalate " " (map prettyType ts)
+prettyType (Func None b) = prettyType b
 prettyType (Func a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
 prettyType (None) = "None"
 
