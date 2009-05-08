@@ -7,7 +7,7 @@ import Atomo.Primitive (primFuncs)
 import Control.Monad.Error
 import Text.Parsec.Pos (SourcePos, newPos)
 
-type CheckEnv = ([(String, Type)], [(String, Type)])
+type CheckEnv = [[(String, Type)]]
 data TypeCheck = Pass (CheckEnv, Type) | Poly (CheckEnv, [(Type, Type)]) | Error (SourcePos -> AtomoError)
 
 instance Show TypeCheck where
@@ -16,9 +16,10 @@ instance Show TypeCheck where
     show (Error e) = "Error (...)"
 
 getAnyType :: CheckEnv -> String -> Maybe Type
-getAnyType e n = case lookup n (fst e) of
-                      Just t -> Just t
-                      Nothing -> lookup n (snd e)
+getAnyType [] n = Nothing
+getAnyType (s:ss) n = case lookup n s of
+                           Just t -> Just t
+                           Nothing -> getAnyType ss n
 
 Pass _ >>* k = k
 Poly _ >>* k = k
@@ -88,8 +89,7 @@ verifyHash e ((_, (t, v)):vs) = either id (\r -> case checkType e r t of
 checkAST :: ThrowsError [(SourcePos, AtomoVal)] -> ThrowsError [AtomoVal]
 checkAST (Right a) = checkExprs env a (map snd a)
                      where
-                        funEnv = map (\(n, (a, f)) -> (n, toFunc (map Name a))) primFuncs
-                        env = (funEnv, [])
+                        env = []
 checkAST (Left err) = throwError err
 
 checkExprs :: CheckEnv -> [(SourcePos, AtomoVal)] -> [AtomoVal] -> ThrowsError [AtomoVal]
@@ -110,17 +110,17 @@ checkExpr e (ATuple as) = either id (\ts -> Pass (e, Type (Name "()") ts)) $ che
 checkExpr e (AHash as) = verifyHash e as
 checkExpr e (ADefine n v) = either id (\r -> Pass (newEnv r, r)) $ exprType e v
                             where
-                                newEnv r = (fst e, (n, r) : snd e)
+                                newEnv r = ((n, r) : head e) : tail e
 checkExpr e (AData n [] cs) = Pass (newEnv, Name n)
                               where
-                                  newGlobal = map (\c -> case exprType e c of
-                                                              Right t -> (fromAConstruct c, t)) cs ++ fst e
-                                  newEnv = (newGlobal, snd e)
+                                  new = map (\c -> case exprType e c of
+                                                        Right t -> (fromAConstruct c, t)) cs ++ head e
+                                  newEnv = new : tail e
 checkExpr e (AData n as cs) = Pass (newEnv, Type (Name n) as)
                               where
-                                  newGlobal = map (\c -> case exprType e c of
-                                                              Right t -> (fromAConstruct c, t)) cs ++ fst e
-                                  newEnv = (newGlobal, snd e)
+                                  new = map (\c -> case exprType e c of
+                                                        Right t -> (fromAConstruct c, t)) cs ++ head e
+                                  newEnv = new : tail e
 checkExpr e (AIf c t f) = either id (\r -> checkType e (Name "Bool") r >>*
                                            checkExpr e t >>*
                                            checkExpr e f) $ exprType e c
@@ -139,8 +139,8 @@ checkExpr e (AValue c as (AData n ps cs)) = Pass (e, Type (Name n) args)
                                                 argTypes ((AConstruct n v _):ps) | n == c = v
                                                                                  | otherwise = argTypes ps
 checkExpr e (AString as) = Pass (e, Type (Name "[]") [Name "Char"])
-checkExpr e (AType n t) = Pass (((n, t) : fst e, snd e), t)
-checkExpr e (AAnnot n t) = Pass (((n, t) : fst e, snd e), t)
+checkExpr e (AType n t) = Pass (((n, t) : head e) : tail e, t)
+checkExpr e (AAnnot n t) = Pass (((n, t) : head e) : tail e, t)
 checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.
 
 -- Check all expressions and return the return type.
