@@ -39,6 +39,7 @@ data AtomoVal = AInt Integer
               | AReturn AtomoVal
               | AType String Type
               | AAnnot String Type
+              | AImport String [String]
               | ANone
               deriving (Eq)
 
@@ -67,6 +68,7 @@ instance Show AtomoVal where
     show (AReturn v) = "AReturn " ++ show v
     show (AType n t) = "AType " ++ show n ++ " (" ++ show t ++ ")"
     show (AAnnot n t) = "AAnnot " ++ show n ++ " (" ++ show t ++ ")"
+    show (AImport f vs) = "AImport " ++ show f ++ " " ++ show vs
     show (ANone) = "ANone"
 
 
@@ -101,6 +103,7 @@ data AtomoError = NumArgs Int Int SourcePos
                 | UnboundVar String SourcePos
                 | Parser ParseError
                 | Default String SourcePos
+                | Unknown String
 
 
 instance Show AtomoError where
@@ -111,6 +114,7 @@ instance Show AtomoError where
     show (UnboundVar n p)     = prettyPos p ++ "Reference to unknown variable: " ++ n
     show (Parser e)           = "Parse error at " ++ show e
     show (Default m p)        = prettyPos p ++ m
+    show (Unknown m)          = m
 
 instance Error AtomoError where
     noMsg = Default "An error has occurred" (newPos "unknown" 0 0)

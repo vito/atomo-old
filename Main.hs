@@ -11,8 +11,12 @@ import Atomo.Typecheck
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
+import Debug.Trace
 import System
 import System.Console.Haskeline
+import System.FilePath.Posix
+
+type Source = String
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
@@ -73,6 +77,15 @@ eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e (APrimCall n as) = do args <- mapM (eval e) as
                              (getPrim n) args
+eval e (AImport "" ts) = return ANone
+eval e (AImport n ["*"]) = do path <- liftIO $ getPath
+                              source <- liftIO $ readFile (path ++ n ++ ".at")
+                              liftIO $ merge e source
+                              return ANone
+eval e (AImport n ts) = do path <- liftIO $ getPath
+                           source <- liftIO $ readFile (path ++ n ++ ".at")
+                           include e ts source n
+                           return ANone
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -91,18 +104,48 @@ evalString e s = runIOThrows $ liftM pretty $ (liftThrows $ readExpr s) >>= eval
 evalAndPrint :: Env -> String -> IO ()
 evalAndPrint e s = evalString e s >>= putStrLn
 
+merge :: Env -> Source -> IO ()
+merge e s = do let parsed = checkAST $ readScript s
+               case parsed of
+                    Left err -> print err
+                    Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
+                                  case res of
+                                       Left err -> print err
+                                       Right _ -> return ()
+
+include :: Env -> [String] -> Source -> String -> IOThrowsError ()
+include e ts s m = case tree of
+                        Left err -> liftIO $ print err
+                        Right as -> include' e ts as as
+                   where
+                       tree = checkAST $ readScript s
+                       include' e (t:ts) [] _ = throwError $ Unknown $ "Module `" ++ m ++ "' does not export `" ++ t ++ "'"
+                       include' e [] _ _ = return ()
+                       include' e (t:ts) (a:as) tree = case a of
+                                                            (AData n _ _) -> check a n t
+                                                            (AType n _ ) -> check a n t
+                                                            (AClass n _ ) -> check a n t
+                                                            (ADefine n _) -> check a n t
+                                                            (AAnnot n _ ) -> check a n t
+                                                            _ -> include' e ts as tree
+                                                        where
+                                                            check a n t = if n == t
+                                                                             then do eval e a
+                                                                                     include' e ts tree tree
+                                                                             else include' e (t:ts) as tree
+
 -- Execute a string
-execute :: Env -> String -> IO ()
+execute :: Env -> Source -> IO ()
 execute e s = do let parsed = checkAST $ readScript s
                  case parsed of -- Catch parse errors
                       Left err -> print err
                       Right v -> do res <- runErrorT (evalAll e (extractValue parsed ++ [ACall (AVariable "main") ANone]))
                                     case res of
                                          Left err -> print err -- Runtime error
-                                         Right v -> return ()
+                                         Right _ -> return ()
 
 -- Dump an abstract syntax tree
-dumpAST :: String -> IO ()
+dumpAST :: Source -> IO ()
 dumpAST s = dumpPretty ugly 0
             where
                 dumpPretty [] _ = putStrLn ""
@@ -120,6 +163,10 @@ dumpAST s = dumpPretty ugly 0
                                     | otherwise = do putChar c
                                                      dumpPretty cs i
                 ugly = show (extractValue (readExprs s))
+
+getPath :: IO String
+getPath = do args <- liftIO $ getArgs
+             return $ takeDirectory (head args) ++ "/"
 
 -- The Read-Evaluate-Print Loop
 repl :: Env -> InputT IO ()

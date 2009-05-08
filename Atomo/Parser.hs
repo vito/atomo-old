@@ -9,7 +9,7 @@ import Atomo.Primitive
 import Control.Monad
 import Control.Monad.Error
 import Data.List (intercalate, nub, sort)
-import Data.Char (isAlpha, toLower, toUpper, isSpace, digitToInt)
+import Data.Char (isAlpha, toLower, toUpper, isUpper, digitToInt)
 import Debug.Trace
 import Text.Parsec hiding (sepBy, sepBy1)
 import Text.Parsec.Expr
@@ -415,6 +415,9 @@ inCommentSingle = (try (string (P.commentEnd atomoDef)) >> return ())
                 where
                     startEnd   = nub (P.commentEnd atomoDef ++ P.commentStart atomoDef)
 
+capIdent      = do c <- satisfy isUpper
+                   cs <- many (P.identLetter atomoDef)
+                   return (c:cs)
 parens        = P.parens atomo
 brackets      = P.brackets atomo
 braces        = P.braces atomo
@@ -457,6 +460,7 @@ aExpr = aLambda
     <|> aIf
     <|> aClass
     <|> aMutate
+    <|> aImport
     <|> try aDefine
     <|> try aAnnot
     <|> try aInfix
@@ -472,9 +476,10 @@ aExpr = aLambda
     <|> aReference
 
 aMainExpr :: Parser AtomoVal
-aMainExpr = try aData
-        <|> try aNewType
-        <|> try aClass
+aMainExpr = aImport
+        <|> aData
+        <|> aNewType
+        <|> aClass
         <|> try aDefine
         <|> try aAnnot
 
@@ -488,6 +493,15 @@ aReference :: Parser AtomoVal
 aReference = do name <- identifier <|> try (parens operator)
                 return $ AVariable name
              <?> "variable reference"
+
+-- Import
+aImport :: Parser AtomoVal
+aImport = do reserved "import"
+             from <- option "" (symbol "from" >> capIdent)
+             colon
+             whiteSpace
+             targets <- commaSep1 (identifier <|> try (parens operator) <|> symbol "*")
+             return $ AImport from targets
 
 -- Class
 aClass :: Parser AtomoVal
@@ -738,6 +752,7 @@ readExpr = readOrThrow aExpr
 readExprs :: String -> ThrowsError [AtomoVal]
 readExprs es = readOrThrow (many $ do x <- aExpr
                                       optional eol <|> eof
+                                      whiteSpace
                                       return x) es
 
 readScript :: String -> ThrowsError [(SourcePos, AtomoVal)]
