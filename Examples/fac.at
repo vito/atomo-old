@@ -1,7 +1,8 @@
-int fac(int n):
+fac n:
     if n == 0:
         1
     else:
-        n * fac(n - 1)
+        n * fac (n - 1)
 
-dump(fac(10))
+main:
+    dump (fac 10)

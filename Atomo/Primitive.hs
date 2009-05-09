@@ -110,6 +110,9 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
 
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
 
+                equalityFunc [ (AValue a as (AData ad _ _))
+                             , (AValue b bs (AData bd _ _))
+                             ] = return $ boolToPrim (a == a && as == bs && ad == bd)
                 equalityFunc [a, b] = return $ boolToPrim (a == b)
 
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
