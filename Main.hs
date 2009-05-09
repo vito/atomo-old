@@ -164,7 +164,7 @@ modulize e [] = return ANone
 modulize e (t:ts) = do parsed <- tree
                        case parsed of
                             Left err -> throwError err
-                            Right as -> do defineVal e t (AModule as)
+                            Right as -> do defineVal e (last . dots $ t) (AModule as)
                                            modulize e ts
                     where
                         tree = do source <- liftIO $ readModule t
@@ -236,15 +236,14 @@ readModule s = do path <- getPath
                   readFile (path ++ pathify s ++ ".at")
 
 pathify :: String -> String
-pathify "" = ""
-pathify s = undots (dots s)
-            where
-                undots = intercalate "/"
-                dots s = l : case s' of
-                                  [] -> []
-                                  (_:s'') -> dots s''
-                        where
-                            (l, s') = break (== '.') s
+pathify s = intercalate "/" (dots s)
+
+dots :: String -> [String]
+dots s = l : case s' of
+                  [] -> []
+                  (_:s'') -> dots s''
+        where
+            (l, s') = break (== '.') s
 
 -- The Read-Evaluate-Print Loop
 repl :: Env -> InputT IO ()
