@@ -1,0 +1,38 @@
+class Person:
+    name :: String
+    age :: Integer
+    gender :: String
+
+    new :: Person -> String -> Integer -> String -> Person
+    new self n a g:
+        self.name: n
+        self.age: a
+        self.gender: g
+
+        print "Initialized."
+        print ("`name' is now: " ++ self.name)
+        print ("`age' is now: " ++ show self.age)
+        print ("`gender' is now: " ++ self.gender)
+
+        self
+
+    eat :: Person -> String -> ()
+    eat self food:
+        print ("Success! " ++ self.name ++ " ate " ++ show food ++ "!")
+
+    self.static :: ()
+    self.static:
+        print "Here's a static method!"
+
+main:
+    alex: Person "Alex" 17 "Male"
+    alex.eat "Godzilla"
+
+    sarah: Person "Sarah" 19 "Female"
+    sarah.eat "Pizza"
+
+    alex.eat "Taco"
+
+    alexes: Person "Alix"
+    me: alexes 17 "Male"
+    me.eat "Human"

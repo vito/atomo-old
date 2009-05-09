@@ -23,10 +23,12 @@ data AtomoVal = AInt Integer
               | AHash [(String, (Type, AtomoVal))]
               | AString AtomoVal -- AString == AList of AChars
               | AVariable String
-              | AClass String [(String, AtomoVal)] -- Name [(Attribute/Function Name, Value)]
-              | AAttribute (AtomoVal, String)
-              | AObject String [AtomoVal]
+              | AClass [AtomoVal] [AtomoVal]
+              | AObject [AtomoVal]
+              | AAttribute AtomoVal String
               | ADefine String AtomoVal
+              | ADefAttr AtomoVal String AtomoVal
+              | AStatic String AtomoVal
               | AMutate String AtomoVal
               | APrimCall String [AtomoVal]
               | ALambda String AtomoVal [(String, AtomoVal)]
@@ -40,6 +42,7 @@ data AtomoVal = AInt Integer
               | AType String Type
               | AAnnot String Type
               | AImport String [String]
+              | AModule [AtomoVal]
               | ANone
               deriving (Eq)
 
@@ -52,10 +55,12 @@ instance Show AtomoVal where
     show (AHash v) = "AHash " ++ show v
     show (AString v) = "AString (" ++ show v ++ ")"
     show (AVariable v) = "AVariable " ++ show v
-    show (AClass n v) = "AClass " ++ show n ++ " " ++ show v
-    show (AAttribute v) = "AAttribute " ++ show v
-    show (AObject n v) = "AObject " ++ show n ++ " " ++ show v
+    show (AClass s i) = "AClass " ++ show s ++ " " ++ show i
+    show (AAttribute v a) = "AAttribute (" ++ show v ++ ") " ++ show a
+    show (AObject v) = "AObject " ++ show v
     show (ADefine n v) = "ADefine " ++ show n ++ " (" ++ show v ++ ")"
+    show (ADefAttr o n v) = "ADefAttr (" ++ show o ++ ") " ++ show n ++ " (" ++ show v ++ ")"
+    show (AStatic n v) = "AStatic " ++ show n ++ " (" ++ show v ++ ")"
     show (AMutate n v) = "AMutate " ++ show n ++ " " ++ show v
     show (APrimCall n ps) = "APrimCall " ++ show n ++ " " ++ show ps
     show (ALambda p c bs) = "ALambda " ++ show p ++ " (" ++ show c ++ ") " ++ show bs
@@ -69,6 +74,7 @@ instance Show AtomoVal where
     show (AType n t) = "AType " ++ show n ++ " (" ++ show t ++ ")"
     show (AAnnot n t) = "AAnnot " ++ show n ++ " (" ++ show t ++ ")"
     show (AImport f vs) = "AImport " ++ show f ++ " " ++ show vs
+    show (AModule as) = "AModule " ++ show as
     show (ANone) = "ANone"
 
 
@@ -149,8 +155,10 @@ pretty (AHash es)       = "{ " ++ (intercalate ", " (map prettyVal es)) ++ " }"
 pretty (ATuple vs)      = "(" ++ (intercalate ", " (map pretty vs)) ++ ")"
 pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ v)    = pretty v
+pretty (ADefAttr _ _ v) = pretty v
+pretty (AStatic _ v)    = pretty v
 pretty (AMutate _ v)    = pretty v
-pretty (AObject n vs)   = n ++ " (Object):\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
+pretty (AObject vs)     = "Object:\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
 pretty (ACall f a)      = "<Call (`" ++ pretty f ++ "') (`" ++ pretty a ++ "')>"
 pretty s@(AString _)    = show $ fromAString s
 pretty (ABlock es)      = intercalate "\n" $ map pretty es
@@ -164,6 +172,10 @@ pretty v@(ALambda _ _ _) = "\\ " ++ intercalate " " (reverse $ lambdas v []) ++ 
                            where
                                lambdas (ALambda n v _) acc = lambdas v (n : acc)
                                lambdas _ acc = acc
+pretty (AClass ss ms) = "<Class (`" ++ statics ++ "') (`" ++ methods ++ "')>"
+                        where
+                            statics = intercalate "' `" (map (\(AStatic n _) -> n) ss)
+                            methods = intercalate "' `" (map (\(ADefine n _) -> n) ms)
 pretty ANone            = "None"
 pretty a                = "TODO -- " ++ show a
 
@@ -186,3 +198,17 @@ callify as t = callify' (reverse as) t
                    callify' [] t = ACall t ANone
                    callify' [a] t = ACall t a
                    callify' (a:as) t = ACall (callify' as t) a
+
+static :: AtomoVal -> [AtomoVal]
+static (ABlock xs) = static' xs
+                     where
+                         static' [] = []
+                         static' (v@(AStatic _ _):xs) = v : static' xs
+                         static' (_:xs) = static' xs
+
+public :: AtomoVal -> [AtomoVal]
+public (ABlock xs) = public' xs
+                     where
+                         public' [] = []
+                         public' (v@(ADefine _ _):xs) = v : public' xs
+                         public' (_:xs) = public' xs

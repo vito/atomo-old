@@ -11,6 +11,7 @@ import Atomo.Typecheck
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
+import Data.List (intercalate)
 import Debug.Trace
 import System
 import System.Console.Haskeline
@@ -31,6 +32,12 @@ patternMatch s ps as = return ()
 
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
+apply e (AClass _ cs) a = case getAVal cs "new" of
+                               Nothing -> return object
+                               Just (ADefine _ v) -> do new <- apply e v object
+                                                        apply e new a
+                          where
+                              object = AObject cs
 apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (AValue n as d) -> do env <- bind
@@ -63,8 +70,20 @@ eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
 eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
 eval e (AVariable n)  = getVal e n >>= eval e
-eval e (ADefine n v)  = defineVal e n v
+eval e (ADefine n v)  = eval e v >>= defineVal e n
+eval e (ADefAttr n@(AVariable o) a v) = do ev <- eval e n
+                                           val <- eval e v
+                                           case ev of
+                                                (AObject object) -> mutateVal e o (AObject (setAVal object a val))
+                                                _ -> throwError $ Unknown $ "Variable `" ++ o ++ "' does not refer to an object."
 eval e (AMutate n v)  = eval e v >>= mutateVal e n
+eval e (ACall t@(AAttribute o n) a) = do obj <- eval e o
+                                         fun <- eval e t
+                                         arg <- eval e a
+                                         case fun of
+                                              (ALambda _ _ _) -> do self'd <- apply e fun obj
+                                                                    apply e self'd arg
+                                              _ -> return fun
 eval e (ACall f a)    = do fun <- eval e f
                            arg <- eval e a
                            apply e fun arg
@@ -77,15 +96,21 @@ eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e (APrimCall n as) = do args <- mapM (eval e) as
                              (getPrim n) args
-eval e (AImport "" ts) = return ANone
-eval e (AImport n ["*"]) = do path <- liftIO $ getPath
-                              source <- liftIO $ readFile (path ++ n ++ ".at")
-                              liftIO $ merge e source
+eval e (AImport "" ts) = modulize e ts
+eval e (AImport n ["*"]) = do source <- liftIO $ readModule n
+                              merge e source
                               return ANone
-eval e (AImport n ts) = do path <- liftIO $ getPath
-                           source <- liftIO $ readFile (path ++ n ++ ".at")
+eval e (AImport n ts) = do source <- liftIO $ readModule n
                            include e ts source n
                            return ANone
+eval e (AAttribute t n) = do target <- eval e t
+                             case target of
+                                  (AModule as) -> case getAVal as n of
+                                                       Just v -> eval e v
+                                                       Nothing -> throwError $ Unknown $ "Module does not have value `" ++ n ++ "'."
+                                  (AObject cs) -> case getAVal cs n of
+                                                       Just v -> eval e v
+                                                       Nothing -> throwError $ Unknown $ "Object does not have attribute `" ++ n ++ "'."
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -104,27 +129,27 @@ evalString e s = runIOThrows $ liftM pretty $ (liftThrows $ readExpr s) >>= eval
 evalAndPrint :: Env -> String -> IO ()
 evalAndPrint e s = evalString e s >>= putStrLn
 
-merge :: Env -> Source -> IO ()
-merge e s = do let parsed = checkAST $ readScript s
-               case parsed of
-                    Left err -> print err
-                    Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
-                                  case res of
-                                       Left err -> print err
-                                       Right _ -> return ()
+merge :: Env -> Source -> IOThrowsError AtomoVal
+merge e s = case parsed of
+                 Left err -> throwError err
+                 Right v -> do res <- liftIO $ runErrorT (evalAll e (extractValue parsed))
+                               case res of
+                                    Left err -> throwError err
+                                    Right _ -> return ANone
+            where
+                parsed = checkAST $ readScript s
 
-include :: Env -> [String] -> Source -> String -> IOThrowsError ()
+include :: Env -> [String] -> Source -> String -> IOThrowsError AtomoVal
 include e ts s m = case tree of
-                        Left err -> liftIO $ print err
+                        Left err -> throwError err
                         Right as -> include' e ts as as
                    where
                        tree = checkAST $ readScript s
                        include' e (t:ts) [] _ = throwError $ Unknown $ "Module `" ++ m ++ "' does not export `" ++ t ++ "'"
-                       include' e [] _ _ = return ()
+                       include' e [] _ _ = return ANone
                        include' e (t:ts) (a:as) tree = case a of
                                                             (AData n _ _) -> check a n t
                                                             (AType n _ ) -> check a n t
-                                                            (AClass n _ ) -> check a n t
                                                             (ADefine n _) -> check a n t
                                                             (AAnnot n _ ) -> check a n t
                                                             _ -> include' e ts as tree
@@ -134,15 +159,53 @@ include e ts s m = case tree of
                                                                                      include' e ts tree tree
                                                                              else include' e (t:ts) as tree
 
+modulize :: Env -> [String] -> IOThrowsError AtomoVal
+modulize e [] = return ANone
+modulize e (t:ts) = do parsed <- tree
+                       case parsed of
+                            Left err -> throwError err
+                            Right as -> do defineVal e t (AModule as)
+                                           modulize e ts
+                    where
+                        tree = do source <- liftIO $ readModule t
+                                  return $ checkAST $ readScript source
+
+getAVal :: [AtomoVal] -> String -> Maybe AtomoVal
+getAVal [] _ = Nothing
+getAVal (a:as) t = case a of
+                        (AData _ _ cs) -> case getAVal cs t of
+                                               Just v -> Just v
+                                               Nothing -> getAVal as t
+                        (AConstruct n _ _) -> check a n t
+                        (AType n _ ) -> check a n t
+                        (ADefine n _) -> check a n t
+                        (AAnnot n _ ) -> check a n t
+                        _ -> getAVal as t
+                   where
+                       check a n t = if n == t
+                                        then Just a
+                                        else getAVal as t
+
+setAVal :: [AtomoVal] -> String -> AtomoVal -> [AtomoVal]
+setAVal as n v = setAVal' as n v []
+                 where
+                     setAVal' [] t v acc = (ADefine t v) : acc
+                     setAVal' (a:as) t v acc = case a of
+                                                    (ADefine n _) -> if n == t
+                                                                        then acc ++ (ADefine n v) : as
+                                                                        else setAVal' as t v (a : acc)
+                                                    _ -> setAVal' as t v (a : acc)
+
 -- Execute a string
 execute :: Env -> Source -> IO ()
-execute e s = do let parsed = checkAST $ readScript s
-                 case parsed of -- Catch parse errors
-                      Left err -> print err
-                      Right v -> do res <- runErrorT (evalAll e (extractValue parsed ++ [ACall (AVariable "main") ANone]))
-                                    case res of
-                                         Left err -> print err -- Runtime error
-                                         Right _ -> return ()
+execute e s = case parsed of -- Catch parse errors
+                   Left err -> print err
+                   Right v -> do res <- runErrorT (evalAll e (extractValue parsed ++ [ACall (AVariable "main") ANone]))
+                                 case res of
+                                      Left err -> print err -- Runtime error
+                                      Right _ -> return ()
+              where
+                  parsed = checkAST $ readScript s
 
 -- Dump an abstract syntax tree
 dumpAST :: Source -> IO ()
@@ -167,6 +230,21 @@ dumpAST s = dumpPretty ugly 0
 getPath :: IO String
 getPath = do args <- liftIO $ getArgs
              return $ takeDirectory (head args) ++ "/"
+
+readModule :: String -> IO Source
+readModule s = do path <- getPath
+                  readFile (path ++ pathify s ++ ".at")
+
+pathify :: String -> String
+pathify "" = ""
+pathify s = undots (dots s)
+            where
+                undots = intercalate "/"
+                dots s = l : case s' of
+                                  [] -> []
+                                  (_:s'') -> dots s''
+                        where
+                            (l, s') = break (== '.') s
 
 -- The Read-Evaluate-Print Loop
 repl :: Env -> InputT IO ()

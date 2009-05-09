@@ -9,7 +9,7 @@ import Atomo.Primitive
 import Control.Monad
 import Control.Monad.Error
 import Data.List (intercalate, nub, sort)
-import Data.Char (isAlpha, toLower, toUpper, isUpper, digitToInt)
+import Data.Char (isAlpha, toLower, toUpper, isUpper, isLower, digitToInt)
 import Debug.Trace
 import Text.Parsec hiding (sepBy, sepBy1)
 import Text.Parsec.Expr
@@ -415,9 +415,15 @@ inCommentSingle = (try (string (P.commentEnd atomoDef)) >> return ())
                 where
                     startEnd   = nub (P.commentEnd atomoDef ++ P.commentStart atomoDef)
 
+lexeme = P.lexeme atomo
 capIdent      = do c <- satisfy isUpper
                    cs <- many (P.identLetter atomoDef)
                    return (c:cs)
+lowIdent      = do c <- satisfy isLower
+                   cs <- many (P.identLetter atomoDef)
+                   return (c:cs)
+capIdentifier = lexeme capIdent
+lowIdentifier = lexeme lowIdent
 parens        = P.parens atomo
 brackets      = P.brackets atomo
 braces        = P.braces atomo
@@ -473,7 +479,7 @@ aExpr = aLambda
     <|> aNumber
     <|> aString
     <|> aChar
-    <|> aReference
+    <|> aVariable
 
 aMainExpr :: Parser AtomoVal
 aMainExpr = aImport
@@ -489,32 +495,70 @@ aScriptExpr = do pos <- getPosition
                  return (pos, expr)
 
 -- Reference (variable lookup)
-aReference :: Parser AtomoVal
-aReference = do name <- identifier <|> try (parens operator)
-                return $ AVariable name
-             <?> "variable reference"
+aReference :: Parser String
+aReference = identifier <|> try (parens operator)
+
+-- Variable reference
+aVariable :: Parser AtomoVal
+aVariable = aReference >>= return . AVariable
+            <?> "variable reference"
+
+aModule :: Parser String
+aModule = do path <- capIdentifier `sepBy1` char '.'
+             return (intercalate "." path)
 
 -- Import
 aImport :: Parser AtomoVal
 aImport = do reserved "import"
-             from <- option "" (symbol "from" >> capIdent)
+             from <- option "" (symbol "from" >> aModule)
              colon
              whiteSpace
-             targets <- commaSep1 (identifier <|> try (parens operator) <|> symbol "*")
+             targets <- case from of
+                             "" -> commaSep1 aModule
+                             _ -> commaSep1 (aReference <|> symbol "*")
              return $ AImport from targets
 
 -- Class
 aClass :: Parser AtomoVal
 aClass = do reserved "class"
-            code <- aBlock
-            return code
+            name <- capIdentifier
+            code <- aBlockOf (try aStaticAnnot <|> try aAnnot <|> try aStatic <|> try aMethod)
+            return $ ADefine name $ AClass (static code) (public code)
 
--- Object attribute
+-- Static definition
+aStatic :: Parser AtomoVal
+aStatic = do string "self"
+             dot
+             name <- lowIdentifier <|> parens operator
+             args <- many lowIdentifier
+             code <- aBlock
+             return $ AStatic name $ lambdify args code
+          <?> "static definition"
+
+-- Method definition
+aMethod :: Parser AtomoVal
+aMethod = do name <- lowIdentifier <|> parens operator
+             args <- many lowIdentifier
+             code <- aBlockOf (try aDefAttr <|> aExpr)
+             return $ ADefine name $ lambdify args code
+          <?> "method definition"
+
+-- Data field definition
+aDefAttr :: Parser AtomoVal
+aDefAttr = do object <- aVariable
+              dot
+              name <- lowIdentifier <|> parens operator
+              args <- many lowIdentifier
+              code <- aBlockOf (try aDefAttr <|> aExpr)
+              return $ ADefAttr object name $ lambdify args code
+           <?> "data definition"
+
+-- Attribute
 aAttribute :: Parser AtomoVal
-aAttribute = do target <- aReference
+aAttribute = do target <- aVariable
                 dot
                 attribute <- identifier
-                return $ AAttribute (target, attribute)
+                return $ AAttribute target attribute
 
 -- Type, excluding functions
 aSimpleType :: Parser Type
@@ -533,7 +577,14 @@ aType = do types <- (aSimpleType <|> parens aType) `sepBy1` (symbol "->")
            return $ toFunc types
         <?> "type declaration"
 
+-- Static type header (self.foo)
+aStaticAnnot :: Parser AtomoVal
+aStaticAnnot = do string "self"
+                  dot
+                  aAnnot
+
 -- Type header
+aAnnot :: Parser AtomoVal
 aAnnot = do name <- identifier <|> operator
             symbol "::"
             types <- aType
@@ -578,34 +629,37 @@ aReturn = do reserved "return"
              return $ AReturn expr
 -- Block
 aBlock :: Parser AtomoVal
-aBlock = do colon
-            exprs <- (do newline
-                         whiteSpace
-                         i <- getIndent
-                         aBlock' i i [])
-                 <|> (spacing >> aExpr >>= return . (: []))
-            return $ ABlock exprs
-         <?> "block"
-         where
-             aBlock' :: Int -> Int -> [AtomoVal] -> Parser [AtomoVal]
-             aBlock' p i es | i /= p = return es
-                 {- pies!-} | otherwise = try (do x <- aExpr
-                                                  whiteSpace
-                                                  new <- getIndent
-                                                  next <- aBlock' new i es
-                                                  return $ x : next) <|> return es
+aBlock = aBlockOf aExpr
+
+aBlockOf :: Parser AtomoVal -> Parser AtomoVal
+aBlockOf p = do colon
+                exprs <- (do newline
+                             whiteSpace
+                             i <- getIndent
+                             aBlock' i i [])
+                     <|> (spacing >> aExpr >>= return . (: []))
+                return $ ABlock exprs
+             <?> "block"
+             where
+                 aBlock' :: Int -> Int -> [AtomoVal] -> Parser [AtomoVal]
+                 aBlock' o i es | i /= o = return es
+                     {- pies!-} | otherwise = try (do x <- p
+                                                      whiteSpace
+                                                      new <- getIndent
+                                                      next <- aBlock' new i es
+                                                      return $ x : next) <|> return es
 
 
 -- Data constructor
 aConstructor :: Parser (AtomoVal -> AtomoVal)
-aConstructor = do name <- identifier
+aConstructor = do name <- capIdentifier
                   params <- many aType
                   return $ AConstruct name params
 
 -- New data declaration
 aData :: Parser AtomoVal
 aData = do reserved "data"
-           name <- identifier
+           name <- capIdentifier
            params <- many aType
            colon
            whiteSpace
@@ -623,8 +677,8 @@ aIf = do reserved "if"
          
 -- Variable assignment
 aDefine :: Parser AtomoVal
-aDefine = do name <- identifier <|> parens operator
-             args <- many identifier
+aDefine = do name <- lowIdentifier <|> parens operator
+             args <- many lowIdentifier
              code <- aBlock
              return $ ADefine name $ lambdify args code
           <?> "definition"
@@ -632,7 +686,7 @@ aDefine = do name <- identifier <|> parens operator
 -- Variable reassignment
 aMutate :: Parser AtomoVal
 aMutate = do reserved "mutate"
-             name <- identifier
+             name <- lowIdentifier
              val <- aBlock
              return $ AMutate name val
           <?> "variable reassignment"
@@ -650,7 +704,7 @@ aTuple = do contents <- parens $ commaSep aExpr
 -- Parse a hash (mutable, named contents of any type)
 aHash :: Parser AtomoVal
 aHash = do contents <- braces $ commaSep (do theType <- aType
-                                             name <- identifier
+                                             name <- lowIdentifier
                                              colon
                                              whiteSpace
                                              expr <- aExpr
@@ -679,7 +733,7 @@ aChar = charLiteral >>= return . charToPrim
 
 -- Function call (prefix)
 aCall :: Parser AtomoVal
-aCall = do name <- aReference <|> try (parens aExpr)
+aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
            pos <- getPosition
            args <- many $ try arg
            return $ callify args name
@@ -693,7 +747,7 @@ aCall = do name <- aReference <|> try (parens aExpr)
               <|> aList
               <|> aHash
               <|> aTuple
-              <|> aReference
+              <|> aVariable
               <|> aString
               <|> aChar
               <|> aNumber
@@ -732,7 +786,8 @@ aInfix = do val <- buildExpressionParser table targets
                    <|> aNumber
                    <|> aString
                    <|> aChar
-                   <|> aReference
+                   <|> try aAttribute
+                   <|> aVariable
 
 
 -- Parse a string or throw any errors
