@@ -20,6 +20,16 @@ class Person:
     eat self food:
         print ("Success! " ++ self.name ++ " ate " ++ show food ++ "!")
 
+
+    drink :: Person -> String -> ()
+    drink self beverage:
+        if beverage == "beer":
+            if self.age < 18:
+                print ("That's illegal, " ++ self.name ++ "! Shame on you!")
+                return
+
+        print ("Hooray! " ++ self.name ++ ", age " ++ show self.age ++ ", drank some " ++ beverage ++ "!")
+
     self.static :: ()
     self.static:
         print "Here's a static method!"
@@ -36,3 +46,6 @@ main:
     alexes: Person "Alix"
     me: alexes 17 "Male"
     me.eat "Human"
+
+    (Person "Bill" 27 "Male").drink "beer"
+    (Person "Billy" 17 "Male").drink "beer"

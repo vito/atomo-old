@@ -21,11 +21,11 @@ type Source = String
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
-primIf e (AConstruct "true" _ _)  a _ = eval e a
-primIf e (AConstruct "false" _ _) _ b = eval e b
-primIf e (AValue "true" _ _)  a _ = eval e a
-primIf e (AValue "false" _ _) _ b = eval e b
-primIf e c a b = error (show c)
+primIf e (AConstruct "True" _ _)  a _ = eval e a
+primIf e (AConstruct "False" _ _) _ b = eval e b
+primIf e (AValue "True" _ _)  a _ = eval e a
+primIf e (AValue "False" _ _) _ b = eval e b
+primIf e c a b = error ("Value is not boolean: " ++ pretty c)
 
 patternMatch :: Scope -> String -> AtomoVal -> IOThrowsError ()
 patternMatch s ps as = return ()

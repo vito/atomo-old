@@ -13,13 +13,13 @@ primTrueC :: AtomoVal
 primTrueC = AConstruct "True" [] primBool
 
 primFalseC :: AtomoVal
-primFalseC = AConstruct "Talse" [] primBool
+primFalseC = AConstruct "False" [] primBool
 
 primTrue :: AtomoVal
 primTrue = AValue "True" [] primBool
 
 primFalse :: AtomoVal
-primFalse = AValue "Talse" [] primBool
+primFalse = AValue "False" [] primBool
 
 primNot :: AtomoVal -> AtomoVal
 primNot (AValue "True"  _ _) = primFalse

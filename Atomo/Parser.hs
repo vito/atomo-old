@@ -555,7 +555,7 @@ aDefAttr = do object <- aVariable
 
 -- Attribute
 aAttribute :: Parser AtomoVal
-aAttribute = do target <- aVariable
+aAttribute = do target <- aVariable <|> parens aExpr
                 dot
                 attribute <- identifier
                 return $ AAttribute target attribute
@@ -625,7 +625,7 @@ aArgs = commaSep aDecl
 -- Return statement
 aReturn :: Parser AtomoVal
 aReturn = do reserved "return"
-             expr <- aExpr
+             expr <- option ANone aExpr
              return $ AReturn expr
 -- Block
 aBlock :: Parser AtomoVal
