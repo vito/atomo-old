@@ -4,9 +4,12 @@ apply f x:
 operate f x y:
     f x y
 
-combine f g x:
+-- Combine operator
+-- Infix definitions not 100% supported yet
+(.) f g x:
     f (g x)
 
-print (apply show "Hello, world!")
-dump (operate (*) 6 7)
-combine print show "Dumped!"
+main:
+    print (apply show "Hello, world!")
+    dump (operate (*) 6 7)
+    (.) print show "Dumped!"

@@ -744,10 +744,10 @@ aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
               <|> try (parens aIf)
               <|> try (parens aInfix)
               <|> try (parens aCall)
+              <|> try aVariable
               <|> aList
               <|> aHash
               <|> aTuple
-              <|> aVariable
               <|> aString
               <|> aChar
               <|> aNumber
