@@ -8,11 +8,11 @@ liftThrows :: ThrowsError a -> IOThrowsError a
 liftThrows (Left err) = throwError err
 liftThrows (Right val) = return val
 
-runIOThrows :: IOThrowsError String -> IO String
+runIOThrows :: IOThrowsError AtomoVal -> IO AtomoVal
 runIOThrows a = runErrorT (trapError a) >>= return . extractValue
 
-trapError :: IOThrowsError String -> IOThrowsError String
-trapError a = catchError a (return . show)
+trapError :: IOThrowsError AtomoVal -> IOThrowsError AtomoVal
+trapError a = a `catchError` (return . AError . prettyError)
 
 extractValue :: ThrowsError a -> a
 extractValue (Right val) = val

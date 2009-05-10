@@ -34,13 +34,15 @@ patternMatch s ps as = return ()
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 apply e (AClass _ cs) a = case getAVal cs "new" of
                                Nothing -> return object
-                               Just (ADefine _ v@(ALambda arg _ _)) -> do new <- apply e (returnSelf arg v) object
-                                                                          apply e new a
+                               Just v@(ALambda arg _ _) -> do new <- apply e (returnSelf arg v) object
+                                                              apply e new a
                           where
                               object = AObject cs
                               returnSelf a v = modifyFunc v (++ [AReturn (AVariable a)])
 
-apply e (ALambda p c bs) a = case c of
+apply e (ALambda p c bs) a = if a == ANone
+                                then return (ALambda p c bs)
+                                else case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (AValue n as d) -> do env <- bind
                                                         args <- mapM (eval env) as
@@ -72,7 +74,7 @@ eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
 eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
 eval e (AVariable n)  = getVal e n >>= eval e
-eval e (ADefine n v)  = eval e v >>= defineVal e n
+eval e (ADefine n v)  = defineVal e n v
 eval e (ADefAttr n@(AVariable o) a v) = do ev <- eval e n
                                            val <- eval e v
                                            case ev of
@@ -82,10 +84,12 @@ eval e (AMutate n v)  = eval e v >>= mutateVal e n
 eval e (ACall t@(AAttribute o n) a) = do obj <- eval e o
                                          fun <- eval e t
                                          arg <- eval e a
-                                         case fun of
-                                              (ALambda _ _ _) -> do self'd <- apply e fun obj
-                                                                    apply e self'd arg
-                                              _ -> return fun
+                                         case obj of
+                                              (AObject _) -> case fun of
+                                                                  (ALambda _ _ _) -> do self'd <- apply e fun obj
+                                                                                        apply e self'd arg
+                                                                  _ -> return fun
+                                              (AClass _ _) -> apply e fun arg
 eval e (ACall f a)    = do fun <- eval e f
                            arg <- eval e a
                            apply e fun arg
@@ -113,6 +117,9 @@ eval e (AAttribute t n) = do target <- eval e t
                                   (AObject cs) -> case getAVal cs n of
                                                        Just v -> eval e v
                                                        Nothing -> throwError $ Unknown $ "Object does not have attribute `" ++ n ++ "'."
+                                  (AClass ss _) -> case getAVal ss n of
+                                                        Just v -> eval e v
+                                                        Nothing -> throwError $ Unknown $ "Class does not have static method `" ++ n ++ "'."
                                   a -> throwError $ Unknown $ "Cannot get attribute `" ++ n ++ "' of `" ++ pretty a ++ "'"
 eval _ v = return v
 
@@ -126,12 +133,13 @@ evalAll e es = evalAll' e es ANone
                                                  r@(AReturn _) -> return r
                                                  otherwise -> evalAll' e xs res
 
-evalString :: Env -> String -> IO String
-evalString e s = runIOThrows $ liftM pretty $ (liftThrows $ readExpr s) >>= eval e
+evalString :: Env -> String -> IO AtomoVal
+evalString e s = runIOThrows $ (liftThrows $ readExpr s) >>= eval e
 
 evalAndPrint :: Env -> String -> IO ()
-evalAndPrint e s = evalString e s >>= putStrLn
+evalAndPrint e s = evalString e s >>= putStrLn . pretty
 
+-- Merge source into the environemt (e.g. import from Foo: *)
 merge :: Env -> Source -> IOThrowsError AtomoVal
 merge e s = case parsed of
                  Left err -> throwError err
@@ -142,6 +150,7 @@ merge e s = case parsed of
             where
                 parsed = checkAST $ readScript s
 
+-- Include targets from a module (e.g. import from Foo: bar, baz)
 include :: Env -> [String] -> Source -> String -> IOThrowsError AtomoVal
 include e ts s m = case tree of
                         Left err -> throwError err
@@ -162,6 +171,7 @@ include e ts s m = case tree of
                                                                                      include' e ts tree tree
                                                                              else include' e (t:ts) as tree
 
+-- Import an unqualified module (e.g. import: Foo.Bar)
 modulize :: Env -> [String] -> IOThrowsError AtomoVal
 modulize e [] = return ANone
 modulize e (t:ts) = do parsed <- tree
@@ -173,6 +183,7 @@ modulize e (t:ts) = do parsed <- tree
                         tree = do source <- liftIO $ readModule t
                                   return $ checkAST $ readScript source
 
+-- Look up a definition in a source tree
 getAVal :: [AtomoVal] -> String -> Maybe AtomoVal
 getAVal [] _ = Nothing
 getAVal (a:as) t = case a of
@@ -181,7 +192,8 @@ getAVal (a:as) t = case a of
                                                Nothing -> getAVal as t
                         (AConstruct n _ _) -> check a n t
                         (AType n _ ) -> check a n t
-                        (ADefine n _) -> check a n t
+                        (ADefine n v) -> check v n t
+                        (AStatic n v) -> check v n t
                         (AAnnot n _ ) -> check a n t
                         _ -> getAVal as t
                    where
@@ -189,6 +201,7 @@ getAVal (a:as) t = case a of
                                         then Just a
                                         else getAVal as t
 
+-- Define something in a source tree. If already defined, overwrite it.
 setAVal :: [AtomoVal] -> String -> AtomoVal -> [AtomoVal]
 setAVal as n v = setAVal' as n v []
                  where
@@ -207,11 +220,14 @@ modifyFunc (ALambda a v b) f = ALambda a (modifyFunc v f) b
 -- Execute a string
 execute :: Env -> Source -> IO ()
 execute e s = case parsed of -- Catch parse errors
-                   Left err -> print err
-                   Right v -> do res <- runErrorT (evalAll e (extractValue parsed ++ [ACall (AVariable "main") ANone]))
+                   Left err -> putStrLn . prettyError $ err
+                   Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
                                  case res of
-                                      Left err -> print err -- Runtime error
-                                      Right _ -> return ()
+                                      Left err -> putStrLn . prettyError $ err -- Runtime error
+                                      Right _ -> case getAVal v "main" of
+                                                      Just f -> do runIOThrows $ apply e f ANone
+                                                                   return ()
+                                                      Nothing -> putStrLn "Function `main' is not defined."
               where
                   parsed = checkAST $ readScript s
 
@@ -258,9 +274,13 @@ repl :: Env -> InputT IO ()
 repl e = do input <- getInputLine "> "
             case input of
                  Nothing -> return ()
-                 Just "exit()" -> return ()
+                 Just "exit" -> return ()
                  Just input -> do result <- liftIO $ evalString e input
-                                  outputStrLn result
+
+                                  if result == ANone
+                                     then return ()
+                                     else outputStrLn (pretty result)
+
                                   repl e
                                   return ()
 

@@ -43,6 +43,7 @@ data AtomoVal = AInt Integer
               | AAnnot String Type
               | AImport String [String]
               | AModule [AtomoVal]
+              | AError String
               | ANone
               deriving (Eq)
 
@@ -110,25 +111,11 @@ data AtomoError = NumArgs Int Int SourcePos
                 | Parser ParseError
                 | Default String SourcePos
                 | Unknown String
-
-
-instance Show AtomoError where
-    show (NumArgs e f p)      = prettyPos p ++ "Expected " ++ show e ++ " args; found " ++ show f
-    show (ImmutableVar n p)   = prettyPos p ++ "Cannot reassign immutable reference `" ++ n ++ "`"
-    show (TypeMismatch e f p) = prettyPos p ++ "Invalid type; expected `" ++ prettyType e ++ "', found `" ++ prettyType f ++ "'"
-    show (NotFunction n p)    = prettyPos p ++ "Variable is not a function: " ++ n
-    show (UnboundVar n p)     = prettyPos p ++ "Reference to unknown variable: " ++ n
-    show (Parser e)           = "Parse error at " ++ show e
-    show (Default m p)        = prettyPos p ++ m
-    show (Unknown m)          = m
+                deriving (Show)
 
 instance Error AtomoError where
     noMsg = Default "An error has occurred" (newPos "unknown" 0 0)
     strMsg = flip Default (newPos "unknown" 0 0)
-
-prettyPos :: SourcePos -> String
-prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
-            | otherwise = "`" ++ sourceName p ++ "', line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
 
 result :: Type -> Type
 result (Func _ t) = t
@@ -176,8 +163,22 @@ pretty (AClass ss ms) = "<Class (`" ++ statics ++ "') (`" ++ methods ++ "')>"
                         where
                             statics = intercalate "' `" (map (\(AStatic n _) -> n) ss)
                             methods = intercalate "' `" (map (\(ADefine n _) -> n) ms)
-pretty ANone            = "()"
+pretty (AError m)       = m
+pretty ANone            = ""
 pretty a                = "TODO -- " ++ show a
+
+prettyError (NumArgs e f p)      = prettyPos p ++ "Expected " ++ show e ++ " args; found " ++ show f
+prettyError (ImmutableVar n p)   = prettyPos p ++ "Cannot reassign immutable reference `" ++ n ++ "`"
+prettyError (TypeMismatch e f p) = prettyPos p ++ "Invalid type; expected `" ++ prettyType e ++ "', found `" ++ prettyType f ++ "'"
+prettyError (NotFunction n p)    = prettyPos p ++ "Variable is not a function: " ++ n
+prettyError (UnboundVar n p)     = prettyPos p ++ "Reference to unknown variable: " ++ n
+prettyError (Parser e)           = "Parse error at " ++ show e
+prettyError (Default m p)        = prettyPos p ++ m
+prettyError (Unknown m)          = m
+
+prettyPos :: SourcePos -> String
+prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
+            | otherwise = "`" ++ sourceName p ++ "', line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
 
 prettyType :: Type -> String
 prettyType (Name a) = a
