@@ -8,11 +8,11 @@ import Control.Monad.Error
 import Text.Parsec.Pos (SourcePos, newPos)
 
 type CheckEnv = [[(String, Type)]]
-data TypeCheck = Pass (CheckEnv, Type) | Poly (CheckEnv, [(Type, Type)]) | Error (SourcePos -> AtomoError)
+data TypeCheck = Pass (CheckEnv, Type) | Polys (CheckEnv, [(Type, Type)]) | Error (SourcePos -> AtomoError)
 
 instance Show TypeCheck where
     show (Pass (e, t)) = "Pass (" ++ show e ++ ", " ++ show t ++ ")"
-    show (Poly (e, ts)) = "Poly (" ++ show e ++ ", " ++ show ts ++ ")"
+    show (Polys (e, ts)) = "Polys (" ++ show e ++ ", " ++ show ts ++ ")"
     show (Error e) = "Error (...)"
 
 getAnyType :: CheckEnv -> String -> Maybe Type
@@ -22,19 +22,19 @@ getAnyType (s:ss) n = case lookup n s of
                            Nothing -> getAnyType ss n
 
 Pass _ >>* k = k
-Poly _ >>* k = k
+Polys _ >>* k = k
 Error e >>* _ = Error e
 
 -- todo: type aliases, and alias string to [char] in the prelude
 --       so we don't have to do this silliness
 checkType :: CheckEnv -> Type -> Type -> TypeCheck
-checkType e _ (Name [a]) = Pass (e, Name [a])
-checkType e (Name [a]) _ = Pass (e, Name [a])
+checkType e _ (Poly a) = Pass (e, Poly a)
+checkType e (Poly a) _ = Pass (e, Poly a)
 -- Constructors that take no argument should always match against their constructor
 checkType e (Func None (Type (Name c) as)) t@(Type (Name d) _) | c == d = Pass (e, t)
                                                                | otherwise = Error $ TypeMismatch t (Type (Name c) as)
-checkType e t@(Type (Name a) [aa]) f@(Type (Name b) [Name [_]]) | a == b = Pass (e, t)
-                                                                | otherwise = checkType e t f
+checkType e t@(Type (Name a) [aa]) f@(Type (Name b) [Poly _]) | a == b = Pass (e, t)
+                                                              | otherwise = checkType e t f
 checkType e a@(Name n) b = case getAnyType e n of
                                 Just t -> checkType e t b
                                 Nothing -> matchTypes e a b
@@ -96,7 +96,7 @@ checkExprs :: CheckEnv -> [(SourcePos, AtomoVal)] -> [AtomoVal] -> ThrowsError [
 checkExprs _ [] t = return t
 checkExprs e ((p, a):as) t = case checkExpr e a of
                                   Pass (e, _) -> checkExprs e as t
-                                  Poly (e, _) -> checkExprs e as t
+                                  Polys (e, _) -> checkExprs e as t
                                   Error e -> throwError (e p)
 
 exprType :: CheckEnv -> AtomoVal -> Either TypeCheck Type
@@ -159,13 +159,13 @@ checkArgs :: CheckEnv -> [Type] -> [Type] -> TypeCheck
 checkArgs e ts' as' | length ts' /= length as' = Error $ NumArgs (length ts') (length as')
                     | otherwise = checkArgs' e ts' as' []
                       where
-                          checkArgs' e [] [] rs = Poly (e, rs)
+                          checkArgs' e [] [] rs = Polys (e, rs)
                           checkArgs' e (t:ts) (a:as) rs = checkType e t a >>* checkArgs' e (swapPoly ts t a) as polys
                                                           where
                                                               polys = case t of
-                                                                           (Name [_]) -> (t, a) : rs
+                                                                           (Poly _) -> (t, a) : rs
                                                                            _ -> rs
-                          swapPoly ts t@(Name [_]) n = swapType ts t n
+                          swapPoly ts t@(Poly _) n = swapType ts t n
                           swapPoly ts _ _ = ts
 
 checkTypes :: CheckEnv -> [AtomoVal] -> [Type] -> Either TypeCheck [Type]

@@ -14,8 +14,6 @@ class Person:
         print ("`age' is now: " ++ show self.age)
         print ("`gender' is now: " ++ self.gender)
 
-        self
-
     eat :: Person -> String -> ()
     eat self food:
         print ("Success! " ++ self.name ++ " ate " ++ show food ++ "!")
@@ -33,6 +31,7 @@ class Person:
     self.static :: ()
     self.static:
         print "Here's a static method!"
+
 
 main:
     alex: Person "Alex" 17 "Male"

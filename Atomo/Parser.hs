@@ -562,14 +562,16 @@ aAttribute = do target <- aVariable <|> parens aExpr
 
 -- Type, excluding functions
 aSimpleType :: Parser Type
-aSimpleType = try (do con <- identifier
+aSimpleType = try (do con <- capIdentifier
                       args <- aType `sepBy1` spacing1
                       return $ Type (Name con) args)
           <|> try (do theTypes <- parens (commaSep aType)
                       return $ Type (Name "()") theTypes)
           <|> try (do theType <- brackets aType
                       return $ Type (Name "[]") [theType])
-          <|> (identifier >>= return . Name)
+          <|> (capIdentifier >>= return . Name)
+          <|> (satisfy isLower >>= return . Poly)
+          <|> parens aType
 
 -- Type
 aType :: Parser Type

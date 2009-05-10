@@ -1,11 +1,11 @@
-data List a: Null | Cons a (List a)
+data List a: Nil | Cons a (List a)
 
 a :: List Int
-a: cons 1 (cons 2 null)
+a: Cons 1 (Cons 2 Nil)
 b: [1, 2]
 
 a :: List (List Int)
-c: cons (cons 1 (cons 2 null)) null
+c: Cons (Cons 1 (Cons 2 Null)) Nil
 d: [[1, 2]]
 
 main:
@@ -14,4 +14,4 @@ main:
     dump c
     dump d
 
-    dump (cons 1 (cons 2 (cons "three" null))) -- ERROR!
+    dump (Cons 1 (Cons 2 (Cons "three" Nil))) -- ERROR!

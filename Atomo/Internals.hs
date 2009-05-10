@@ -12,7 +12,7 @@ debug x = trace (show x) x
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
-data Type = Name String | Type Type [Type] | Func Type Type | None
+data Type = Name String | Type Type [Type] | Func Type Type | None | Poly Char
             deriving (Show, Eq)
 
 data AtomoVal = AInt Integer
@@ -70,7 +70,7 @@ instance Show AtomoVal where
     show (AConstruct n ps d) = "AConstruct " ++ show n ++ " " ++ show ps ++ " (AData ...)"
     show (AValue n as d) = "AValue " ++ show n ++ " " ++ show as ++ " (AData ...)"
     show (AIf c t f) = "AIf (" ++ show c ++ ") (" ++ show t ++ ") (" ++ show f ++ ")"
-    show (AReturn v) = "AReturn " ++ show v
+    show (AReturn v) = "AReturn (" ++ show v ++ ")"
     show (AType n t) = "AType " ++ show n ++ " (" ++ show t ++ ")"
     show (AAnnot n t) = "AAnnot " ++ show n ++ " (" ++ show t ++ ")"
     show (AImport f vs) = "AImport " ++ show f ++ " " ++ show vs
@@ -176,7 +176,7 @@ pretty (AClass ss ms) = "<Class (`" ++ statics ++ "') (`" ++ methods ++ "')>"
                         where
                             statics = intercalate "' `" (map (\(AStatic n _) -> n) ss)
                             methods = intercalate "' `" (map (\(ADefine n _) -> n) ms)
-pretty ANone            = "None"
+pretty ANone            = "()"
 pretty a                = "TODO -- " ++ show a
 
 prettyType :: Type -> String

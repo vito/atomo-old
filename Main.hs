@@ -34,10 +34,12 @@ patternMatch s ps as = return ()
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 apply e (AClass _ cs) a = case getAVal cs "new" of
                                Nothing -> return object
-                               Just (ADefine _ v) -> do new <- apply e v object
-                                                        apply e new a
+                               Just (ADefine _ v@(ALambda arg _ _)) -> do new <- apply e (returnSelf arg v) object
+                                                                          apply e new a
                           where
                               object = AObject cs
+                              returnSelf a v = modifyFunc v (++ [AReturn (AVariable a)])
+
 apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (AValue n as d) -> do env <- bind
@@ -47,7 +49,7 @@ apply e (ALambda p c bs) a = case c of
                                                    
                                                    res <- eval env (ABlock c)
                                                    returned <- (case res of
-                                                                     AReturn r -> eval e r
+                                                                     AReturn r -> eval env r
                                                                      a -> return a)
 
                                                    return returned
@@ -111,6 +113,7 @@ eval e (AAttribute t n) = do target <- eval e t
                                   (AObject cs) -> case getAVal cs n of
                                                        Just v -> eval e v
                                                        Nothing -> throwError $ Unknown $ "Object does not have attribute `" ++ n ++ "'."
+                                  a -> throwError $ Unknown $ "Cannot get attribute `" ++ n ++ "' of `" ++ pretty a ++ "'"
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -195,6 +198,11 @@ setAVal as n v = setAVal' as n v []
                                                                         then acc ++ (ADefine n v) : as
                                                                         else setAVal' as t v (a : acc)
                                                     _ -> setAVal' as t v (a : acc)
+
+-- Modify the block of a function, traveling through the lambdas.
+modifyFunc :: AtomoVal -> ([AtomoVal] -> [AtomoVal]) -> AtomoVal
+modifyFunc (ALambda a (ABlock as) b) f = ALambda a (ABlock (f as)) b
+modifyFunc (ALambda a v b) f = ALambda a (modifyFunc v f) b
 
 -- Execute a string
 execute :: Env -> Source -> IO ()
