@@ -8,9 +8,10 @@ a :: List (List Int)
 c: cons (cons 1 (cons 2 null)) null
 d: [[1, 2]]
 
-dump a
-dump b
-dump c
-dump d
+main:
+    dump a
+    dump b
+    dump c
+    dump d
 
-dump (cons 1 (cons 2 (cons "three" null))) -- ERROR!
+    dump (cons 1 (cons 2 (cons "three" null))) -- ERROR!
