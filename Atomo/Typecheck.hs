@@ -7,7 +7,7 @@ import Atomo.Primitive (primFuncs)
 import Control.Monad.Error
 import Text.Parsec.Pos (SourcePos, newPos)
 
-type CheckEnv = [[(String, Type)]]
+type CheckEnv = [[(Index, Type)]]
 data TypeCheck = Pass (CheckEnv, Type) | Polys (CheckEnv, [(Type, Type)]) | Error (SourcePos -> AtomoError)
 
 instance Show TypeCheck where
@@ -15,7 +15,7 @@ instance Show TypeCheck where
     show (Polys (e, ts)) = "Polys (" ++ show e ++ ", " ++ show ts ++ ")"
     show (Error e) = "Error (...)"
 
-getAnyType :: CheckEnv -> String -> Maybe Type
+getAnyType :: CheckEnv -> Index -> Maybe Type
 getAnyType [] n = Nothing
 getAnyType (s:ss) n = case lookup n s of
                            Just t -> Just t
@@ -35,10 +35,10 @@ checkType e (Func None (Type (Name c) as)) t@(Type (Name d) _) | c == d = Pass (
                                                                | otherwise = Error $ TypeMismatch t (Type (Name c) as)
 checkType e t@(Type (Name a) [aa]) f@(Type (Name b) [Poly _]) | a == b = Pass (e, t)
                                                               | otherwise = checkType e t f
-checkType e a@(Name n) b = case getAnyType e n of
+checkType e a@(Name n) b = case getAnyType e (Define n) of
                                 Just t -> checkType e t b
                                 Nothing -> matchTypes e a b
-checkType e a b@(Name n) = case getAnyType e n of
+checkType e a b@(Name n) = case getAnyType e (Define n) of
                                 Just t -> checkType e a t
                                 Nothing -> matchTypes e a b
 checkType e a b = matchTypes e a b
@@ -111,36 +111,16 @@ checkExpr e (AHash as) = verifyHash e as
 checkExpr e (ADefine n v) = either id (\r -> Pass (newEnv r, r)) $ exprType e v
                             where
                                 newEnv r = ((n, r) : head e) : tail e
-checkExpr e (AData n [] cs) = Pass (newEnv, Name n)
-                              where
-                                  new = map (\c -> case exprType e c of
-                                                        Right t -> (fromAConstruct c, t)) cs ++ head e
-                                  newEnv = new : tail e
-checkExpr e (AData n as cs) = Pass (newEnv, Type (Name n) as)
-                              where
-                                  new = map (\c -> case exprType e c of
-                                                        Right t -> (fromAConstruct c, t)) cs ++ head e
-                                  newEnv = new : tail e
 checkExpr e (AIf c t f) = either id (\r -> checkType e (Name "Bool") r >>*
                                            checkExpr e t >>*
                                            checkExpr e f) $ exprType e c
 checkExpr e (ABlock as) = checkAll e as
-checkExpr e (AVariable n) = case getAnyType e n of
+checkExpr e (AVariable n) = case getAnyType e (Define n) of
                                  Just t -> Pass (e, t)
                                  Nothing -> Error $ UnboundVar n
-checkExpr e (AValue c as (AData n ps cs)) = Pass (e, Type (Name n) args)
-                                            where
-                                                args = map (\ a -> case lookup a values of
-                                                                        Just v -> case exprType e v of
-                                                                                       Right t -> t
-                                                                        Nothing -> a) ps
-                                                values = zip (argTypes cs) as
-                                                argTypes [] = []
-                                                argTypes ((AConstruct n v _):ps) | n == c = v
-                                                                                 | otherwise = argTypes ps
 checkExpr e (AString as) = Pass (e, Type (Name "[]") [Name "Char"])
-checkExpr e (AType n t) = Pass (((n, t) : head e) : tail e, t)
-checkExpr e (AAnnot n t) = Pass (((n, t) : head e) : tail e, t)
+checkExpr e (AType n t) = Pass ((((Define n), t) : head e) : tail e, t)
+checkExpr e (AAnnot n t) = Pass ((((Define n), t) : head e) : tail e, t)
 checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.
 
 -- Check all expressions and return the return type.

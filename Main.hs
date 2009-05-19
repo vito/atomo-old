@@ -21,8 +21,6 @@ type Source = String
 
 -- Primitive if-else
 primIf :: Env -> AtomoVal -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
-primIf e (AConstruct "True" _ _)  a _ = eval e a
-primIf e (AConstruct "False" _ _) _ b = eval e b
 primIf e (AValue "True" _ _)  a _ = eval e a
 primIf e (AValue "False" _ _) _ b = eval e b
 primIf e c a b = error ("Value is not boolean: " ++ pretty c)
@@ -32,17 +30,14 @@ patternMatch s ps as = return ()
 
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
-apply e (AClass _ cs) a = case getAVal cs "new" of
+apply e (AClass _ cs) a = case getAVal cs (Define "new") of
                                Nothing -> return object
-                               Just v@(ALambda arg _ _) -> do new <- apply e (returnSelf arg v) object
-                                                              apply e new a
+                               Just v -> do new <- apply e v object
+                                            apply e new a
+                                            return object
                           where
                               object = AObject cs
-                              returnSelf a v = modifyFunc v (++ [AReturn (AVariable a)])
-
-apply e (ALambda p c bs) a = if a == ANone
-                                then return (ALambda p c bs)
-                                else case c of
+apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (AValue n as d) -> do env <- bind
                                                         args <- mapM (eval env) as
@@ -58,14 +53,22 @@ apply e (ALambda p c bs) a = if a == ANone
                              where
                                  bind = do new <- liftIO $ nullScope
                                            let env = new : e
-                                           mapM_ (\(n, v) -> defineVal env n v) $ ((p, a) : bs)
+                                           mapM_ (\(p, v) -> pMatch env p v) $ ((p, a) : bs)
                                            return env
-                                              
+apply e (AFunction (l:_)) ANone = apply e l ANone
+apply e (AFunction ls) a = if null valid
+                              then error $ "Non-exhaustive pattern match in function."
+                              else return $ AFunction bound
+                           where
+                               valid = filter (\(ALambda p _ _) -> pMatches p a) ls
+                               bound = map setBound valid
+                               setBound (ALambda p (ALambda p' c' bs') bs) = ALambda p' c' ((p, a) : (bs ++ bs'))
+                               setBound (ALambda p c bs) = ALambda p c ((p, a) : bs)
 apply e t ANone = eval e t
 apply _ t a = error ("Cannot apply `" ++ pretty a ++ "' on `" ++ pretty t ++ "'")
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
-eval e v@(AType n _)  = defineVal e n v
+eval e v@(AType n _)  = defineVal e (Define n) v
 eval e (ATuple vs)    = do tuple <- mapM (eval e) vs
                            return $ ATuple tuple
 eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
@@ -74,30 +77,26 @@ eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
 eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
 eval e (AVariable n)  = getVal e n >>= eval e
-eval e (ADefine n v)  = defineVal e n v
+eval e (ADefine n v@(ALambda _ _ _)) = defineVal e n v
+eval e (ADefine n v@(ABlock _)) = defineVal e n v
+eval e (ADefine n v)  = eval e v >>= defineVal e n
 eval e (ADefAttr n@(AVariable o) a v) = do ev <- eval e n
                                            val <- eval e v
                                            case ev of
-                                                (AObject object) -> mutateVal e o (AObject (setAVal object a val))
+                                                (AObject object) -> mutateVal e (Define o) (AObject (setAVal object (Define a) val))
                                                 _ -> throwError $ Unknown $ "Variable `" ++ o ++ "' does not refer to an object."
-eval e (AMutate n v)  = eval e v >>= mutateVal e n
 eval e (ACall t@(AAttribute o n) a) = do obj <- eval e o
                                          fun <- eval e t
                                          arg <- eval e a
-                                         case obj of
-                                              (AObject _) -> case fun of
-                                                                  (ALambda _ _ _) -> do self'd <- apply e fun obj
-                                                                                        apply e self'd arg
-                                                                  _ -> return fun
-                                              (AClass _ _) -> apply e fun arg
+
+                                         case fun of
+                                              (AFunction _) -> do self'd <- apply e fun obj
+                                                                  apply e self'd arg
+                                              _ -> return fun
 eval e (ACall f a)    = do fun <- eval e f
                            arg <- eval e a
                            apply e fun arg
 eval e (ABlock es)     = evalAll e es
-eval e (AData s _ cs)  = mapM_ (\c -> defineVal e (fromAConstruct c) (cons c)) cs >> return ANone
-                         where
-                             cons (AConstruct n ts d) = lambdify as (AValue n (map AVariable as) d)
-                                                        where as = map (\c -> [c]) $ take (length ts) ['a'..]
 eval e (AIf c b f)     = do cond <- eval e c
                             primIf e cond b f
 eval e (APrimCall n as) = do args <- mapM (eval e) as
@@ -107,20 +106,23 @@ eval e (AImport n ["*"]) = do source <- liftIO $ readModule n
                               merge e source
                               return ANone
 eval e (AImport n ts) = do source <- liftIO $ readModule n
-                           include e ts source n
+                           include e (map Define ts) source n
                            return ANone
 eval e (AAttribute t n) = do target <- eval e t
                              case target of
-                                  (AModule as) -> case getAVal as n of
+                                  (AModule as) -> case getAVal as (Define n) of
                                                        Just v -> eval e v
                                                        Nothing -> throwError $ Unknown $ "Module does not have value `" ++ n ++ "'."
-                                  (AObject cs) -> case getAVal cs n of
+                                  (AObject cs) -> case getAVal cs (Define n) of
                                                        Just v -> eval e v
                                                        Nothing -> throwError $ Unknown $ "Object does not have attribute `" ++ n ++ "'."
-                                  (AClass ss _) -> case getAVal ss n of
+                                  (AClass ss _) -> case getAVal ss (Define n) of
                                                         Just v -> eval e v
                                                         Nothing -> throwError $ Unknown $ "Class does not have static method `" ++ n ++ "'."
-                                  a -> throwError $ Unknown $ "Cannot get attribute `" ++ n ++ "' of `" ++ pretty a ++ "'"
+                                  _ -> do (AClass _ cs) <- getDef e (Class (getType target))
+                                          case getAVal cs (Define n) of
+                                               Just v -> eval e v
+                                               Nothing -> throwError $ Unknown $ "Type class does not have method `" ++ n ++ "'."
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -131,7 +133,7 @@ evalAll e es = evalAll' e es ANone
                    evalAll' e (x:xs) _ = do res <- eval e x
                                             case res of
                                                  r@(AReturn _) -> return r
-                                                 otherwise -> evalAll' e xs res
+                                                 _ -> evalAll' e xs res
 
 evalString :: Env -> String -> IO AtomoVal
 evalString e s = runIOThrows $ (liftThrows $ readExpr s) >>= eval e
@@ -151,21 +153,23 @@ merge e s = case parsed of
                 parsed = checkAST $ readScript s
 
 -- Include targets from a module (e.g. import from Foo: bar, baz)
-include :: Env -> [String] -> Source -> String -> IOThrowsError AtomoVal
+include :: Env -> [Index] -> Source -> String -> IOThrowsError AtomoVal
 include e ts s m = case tree of
                         Left err -> throwError err
                         Right as -> include' e ts as as
                    where
                        tree = checkAST $ readScript s
-                       include' e (t:ts) [] _ = throwError $ Unknown $ "Module `" ++ m ++ "' does not export `" ++ t ++ "'"
+                       include' :: Env -> [Index] -> [AtomoVal] -> [AtomoVal] -> IOThrowsError AtomoVal
+                       include' e (t:ts) [] _ = throwError $ Unknown $ "Module `" ++ m ++ "' does not export `" ++ show t ++ "'"
                        include' e [] _ _ = return ANone
                        include' e (t:ts) (a:as) tree = case a of
-                                                            (AData n _ _) -> check a n t
-                                                            (AType n _ ) -> check a n t
+                                                            (AData n _) -> check a (Define n) t
+                                                            (AType n _ ) -> check a (Define n) t
                                                             (ADefine n _) -> check a n t
-                                                            (AAnnot n _ ) -> check a n t
+                                                            (AAnnot n _ ) -> check a (Define n) t
                                                             _ -> include' e ts as tree
                                                         where
+                                                            check :: AtomoVal -> Index -> Index -> IOThrowsError AtomoVal
                                                             check a n t = if n == t
                                                                              then do eval e a
                                                                                      include' e ts tree tree
@@ -177,24 +181,24 @@ modulize e [] = return ANone
 modulize e (t:ts) = do parsed <- tree
                        case parsed of
                             Left err -> throwError err
-                            Right as -> do defineVal e (last . dots $ t) (AModule as)
+                            Right as -> do defineVal e (Define $ last . dots $ t) (AModule as)
                                            modulize e ts
                     where
                         tree = do source <- liftIO $ readModule t
                                   return $ checkAST $ readScript source
 
 -- Look up a definition in a source tree
-getAVal :: [AtomoVal] -> String -> Maybe AtomoVal
+getAVal :: [AtomoVal] -> Index -> Maybe AtomoVal
 getAVal [] _ = Nothing
 getAVal (a:as) t = case a of
-                        (AData _ _ cs) -> case getAVal cs t of
-                                               Just v -> Just v
-                                               Nothing -> getAVal as t
-                        (AConstruct n _ _) -> check a n t
-                        (AType n _ ) -> check a n t
+                        (ABlock cs) -> case getAVal cs t of
+                                            Just v -> Just v
+                                            Nothing -> getAVal as t
+                        (AConstruct n _ _) -> check a (Define n) t
+                        (AType n _ ) -> check a (Define n) t
                         (ADefine n v) -> check v n t
-                        (AStatic n v) -> check v n t
-                        (AAnnot n _ ) -> check a n t
+                        (AStatic n v) -> check v (Define n) t
+                        (AAnnot n _ ) -> check a (Define n) t
                         _ -> getAVal as t
                    where
                        check a n t = if n == t
@@ -202,7 +206,7 @@ getAVal (a:as) t = case a of
                                         else getAVal as t
 
 -- Define something in a source tree. If already defined, overwrite it.
-setAVal :: [AtomoVal] -> String -> AtomoVal -> [AtomoVal]
+setAVal :: [AtomoVal] -> Index -> AtomoVal -> [AtomoVal]
 setAVal as n v = setAVal' as n v []
                  where
                      setAVal' [] t v acc = (ADefine t v) : acc
@@ -224,9 +228,11 @@ execute e s = case parsed of -- Catch parse errors
                    Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
                                  case res of
                                       Left err -> putStrLn . prettyError $ err -- Runtime error
-                                      Right _ -> case getAVal v "main" of
-                                                      Just f -> do runIOThrows $ apply e f ANone
-                                                                   return ()
+                                      Right _ -> case getAVal v (Define "main") of
+                                                      Just f -> do main <- runErrorT $ apply e f ANone
+                                                                   case main of
+                                                                        Left err -> putStrLn . prettyError $ err
+                                                                        Right _ -> return ()
                                                       Nothing -> putStrLn "Function `main' is not defined."
               where
                   parsed = checkAST $ readScript s
@@ -295,4 +301,4 @@ main = do args <- getArgs
                        compile source
                3 -> do source <- readFile (args !! 0)
                        dumpAST source
-               otherwise -> putStrLn "`atomo` only takes 1 or 0 arguments."
+               _ -> putStrLn "`atomo` only takes 1 or 0 arguments."

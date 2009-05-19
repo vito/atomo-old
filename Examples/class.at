@@ -16,6 +16,7 @@ class Person:
 
     eat :: Person -> String -> ()
     eat self food:
+        print "Eating..."
         print ("Success! " ++ self.name ++ " ate " ++ show food ++ "!")
 
 
@@ -35,22 +36,20 @@ class Person:
 
 
 main:
-    {- alex: Person "Alex" 17 "Male" -}
-    {- alex.eat "Godzilla" -}
+    alex := Person "Alex" 17 "Male"
+    alex.eat "Godzilla"
 
-    {- sarah: Person "Sarah" 19 "Female" -}
-    {- sarah.eat "Pizza" -}
+    sarah := Person "Sarah" 19 "Female"
+    sarah.eat "Pizza"
 
-    {- alex.eat "Taco" -}
+    alex.eat "Taco"
 
-    {- alexes: Person "Alix" -}
-    {- me: alexes 17 "Male" -}
-    {- me.eat "Human" -}
+    alexes: Person "Alix"
+    me := alexes 17 "Male"
+    me.eat "Human"
 
-    {- (Person "Bill" 27 "Male").drink "beer" -}
-    {- (Person "Billy" 17 "Male").drink "beer" -}
+    (Person "Bill" 27 "Male").drink "beer"
+    (Person "Billy" 17 "Male").drink "beer"
 
-    Person.static "Hello, world!"
+    Person:static "Hello, world!"
 
-foo:
-    print "hi"

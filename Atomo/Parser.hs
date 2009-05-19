@@ -376,12 +376,12 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                         , P.reservedOpNames = ["=", "=>", "->", "::"]
+                         , P.reservedOpNames = ["=", "=>", "->", "::", ":="]
                          , P.reservedNames   = ["if", "else", "elseif", "while",
                                                 "do", "class", "data", "type",
                                                 "where", "module", "infix",
                                                 "infixl", "infixr", "import",
-                                                "return"]
+                                                "return", "receive"]
                          , P.caseSensitive   = True
                          }
 
@@ -465,13 +465,16 @@ aExpr = aLambda
     <|> aReturn
     <|> aIf
     <|> aClass
-    <|> aMutate
     <|> aImport
+    <|> aAtom
+    <|> aReceive
     <|> try aDefine
+    <|> try aBind
     <|> try aAnnot
     <|> try aInfix
     <|> try aCall
     <|> try aAttribute
+    <|> try aAccessor
     <|> try aDouble
     <|> aList
     <|> aHash
@@ -518,47 +521,84 @@ aImport = do reserved "import"
                              _ -> commaSep1 (aReference <|> symbol "*")
              return $ AImport from targets
 
+-- Atom (@foo)
+aAtom :: Parser AtomoVal
+aAtom = do char '@'
+           name <- lowIdentifier
+           return $ AAtom name
+
+-- Receive
+aReceive :: Parser AtomoVal
+aReceive = do reserved "receive"
+              matches <- aBlockOf (do atom <- aPattern
+                                      code <- aBlock
+                                      return $ APattern atom code)
+              return $ AReceive matches
+    
 -- Class
 aClass :: Parser AtomoVal
 aClass = do reserved "class"
-            name <- capIdentifier
+            name <- aSimpleType
             code <- aBlockOf (try aStaticAnnot <|> try aAnnot <|> try aStatic <|> try aMethod)
-            return $ ADefine name $ AClass (static code) (public code)
+            return $ ADefine (Class name) $ AClass (static code) (public code)
 
 -- Static definition
 aStatic :: Parser AtomoVal
 aStatic = do string "self"
              dot
              name <- lowIdentifier <|> parens operator
-             args <- many lowIdentifier
+             args <- many aPattern
              code <- aBlock
              return $ AStatic name $ lambdify args code
           <?> "static definition"
 
 -- Method definition
 aMethod :: Parser AtomoVal
-aMethod = do name <- lowIdentifier <|> parens operator
-             args <- many lowIdentifier
+aMethod = do col <- getIndent
+             name <- lowIdentifier <|> parens operator
+             args <- many aPattern
              code <- aBlockOf (try aDefAttr <|> aExpr)
-             return $ ADefine name $ lambdify args code
-          <?> "method definition"
+             others <- many (try (do newline
+                                     replicateM (col - 1) anyToken
+                                     symbol name
+                                     args <- many aPattern
+                                     code <- aBlockOf (try aDefAttr <|> aExpr)
+                                     return $ lambdify args code))
+             return $ ADefine (Define name) (AFunction $ (lambdify args code : others))
+          <?> "definition"
 
 -- Data field definition
 aDefAttr :: Parser AtomoVal
 aDefAttr = do object <- aVariable
               dot
               name <- lowIdentifier <|> parens operator
-              args <- many lowIdentifier
+              args <- many aPattern
               code <- aBlockOf (try aDefAttr <|> aExpr)
               return $ ADefAttr object name $ lambdify args code
            <?> "data definition"
 
 -- Attribute
 aAttribute :: Parser AtomoVal
-aAttribute = do target <- aVariable <|> parens aExpr
+aAttribute = do target <- target
                 dot
                 attribute <- identifier
-                return $ AAttribute target attribute
+                return $ ACall (AAttribute target attribute) ANone
+             where
+                 target = try (parens aExpr)
+                      <|> try aVariable
+                      <|> aNumber
+                      <|> aChar
+                      <|> aString
+                      <|> aList
+                      <|> aHash
+                      <|> aTuple
+
+-- Module accessing or static call (e.g. Foo:bar)
+aAccessor :: Parser AtomoVal
+aAccessor = do target <- aVariable
+               colon
+               attribute <- aReference
+               return $ AAccessor target attribute
 
 -- Type, excluding functions
 aSimpleType :: Parser Type
@@ -570,8 +610,9 @@ aSimpleType = try (do con <- capIdentifier
           <|> try (do theType <- brackets aType
                       return $ Type (Name "[]") [theType])
           <|> (capIdentifier >>= return . Name)
-          <|> (satisfy isLower >>= return . Poly)
-          <|> parens aType
+          <|> (lexeme (satisfy isLower) >>= return . Poly)
+          <|> try (parens aSimpleType)
+          <|> try (parens aType)
 
 -- Type
 aType :: Parser Type
@@ -604,30 +645,43 @@ aNewType = do reserved "type"
 -- Lambda
 aLambda :: Parser AtomoVal
 aLambda = do reserved "do"
-             params <- many identifier
+             params <- many aPattern
              code <- aBlock
              return $ lambdify params code
 
 -- Pattern matching
-aPattern :: Parser String -- TODO: Finish this
-aPattern = parens (identifier <|> string "_")
-
--- Variable declaration
-aDecl :: Parser (Type, String)
-aDecl = do theType <- aType
-           name <- identifier <|> aPattern
-           return (theType, name)
-        <?> "variable declaration"
-
--- Function arguments
-aArgs :: Parser [(Type, String)]
-aArgs = commaSep aDecl
-        <?> "function arguments"
+aPattern :: Parser PatternMatch
+aPattern = (symbol "_" >> return PAny)
+       <|> try (do name <- lowIdentifier
+                   char '@'
+                   pattern <- aPattern
+                   return $ PNamed name pattern)
+       <|> (lowIdentifier >>= return . PName)
+       <|> (do c <- capIdentifier
+               return $ PCons c [])
+       <|> try (parens (do c <- capIdentifier
+                           as <- many aPattern
+                           return $ PCons c as))
+       <|> try (do tup <- parens (commaSep aPattern)
+                   return $ PTuple tup)
+       <|> try (do list <- brackets (commaSep aPattern)
+                   return $ PList list)
+       <|> try (parens (do h <- aPattern
+                           colon
+                           t <- aPattern
+                           return $ PHeadTail h t))
+       <|> (do val <- aChar
+                  <|> aString
+                  <|> aNumber
+                  <|> aDouble
+                  <|> aAtom
+               return $ PMatch val)
+       <?> "pattern match"
 
 -- Return statement
 aReturn :: Parser AtomoVal
 aReturn = do reserved "return"
-             expr <- option ANone aExpr
+             expr <- option ANone (aExpr <|> parens aExpr)
              return $ AReturn expr
 -- Block
 aBlock :: Parser AtomoVal
@@ -644,54 +698,63 @@ aBlockOf p = do colon
              <?> "block"
              where
                  aBlock' :: Int -> Int -> [AtomoVal] -> Parser [AtomoVal]
-                 aBlock' o i es | i /= o = return es
-                     {- pies!-} | otherwise = try (do x <- p
-                                                      whiteSpace
-                                                      new <- getIndent
-                                                      next <- aBlock' new i es
-                                                      return $ x : next) <|> return es
+                 aBlock' o i es = try (do x <- p
+                                          new <- lookAhead (whiteSpace >> getIndent)
+                                          if new == o
+                                             then do whiteSpace
+                                                     next <- aBlock' o new es
+                                                     return $ x : next
+                                             else return $ x : es) <|> return es
 
 
 -- Data constructor
 aConstructor :: Parser (AtomoVal -> AtomoVal)
 aConstructor = do name <- capIdentifier
-                  params <- many aType
+                  params <- many aSimpleType
                   return $ AConstruct name params
 
 -- New data declaration
 aData :: Parser AtomoVal
 aData = do reserved "data"
            name <- capIdentifier
-           params <- many aType
+           params <- many aSimpleType
            colon
            whiteSpace
            constructors <- aConstructor `sepBy` (symbol "|")
-           let d = AData name params (map ($ d) constructors)
-           return d
+           let d = AData name params
+           return $ ABlock (map (\c -> ADefine (Define $ fromAConstruct c) (cons c)) (map ($ d) constructors))
+        where
+            cons (AConstruct n ts d) = lambdify (map PName as) (AValue n (map AVariable as) d)
+                                       where as = map (\c -> [c]) $ take (length ts) ['a'..]
 
 -- If/If-Else
 aIf :: Parser AtomoVal
 aIf = do reserved "if"
          cond <- aExpr
          code <- aBlock
-         other <- try (reserved "else" >> aBlock) <|> (return $ ABlock [])
+         next <- lookAhead anyToken
+         other <- try (whiteSpace >> reserved "else" >> aBlock) <|> (return $ ABlock [])
          return $ AIf cond code other
          
 -- Variable assignment
 aDefine :: Parser AtomoVal
 aDefine = do name <- lowIdentifier <|> parens operator
-             args <- many lowIdentifier
+             args <- many aPattern
              code <- aBlock
-             return $ ADefine name $ lambdify args code
+             others <- many (try (do whiteSpace
+                                     symbol name
+                                     args <- many aPattern
+                                     code <- aBlock
+                                     return $ lambdify args code))
+             return $ ADefine (Define name) (AFunction $ (lambdify args code : others))
           <?> "definition"
 
--- Variable reassignment
-aMutate :: Parser AtomoVal
-aMutate = do reserved "mutate"
-             name <- lowIdentifier
-             val <- aBlock
-             return $ AMutate name val
-          <?> "variable reassignment"
+-- Variable definition
+aBind :: Parser AtomoVal
+aBind = do name <- lowIdentifier <|> parens operator
+           reservedOp ":="
+           val <- aExpr
+           return $ ADefine (Define name) val
 
 -- Parse a list (mutable list of values of one type)
 aList :: Parser AtomoVal
@@ -738,7 +801,7 @@ aCall :: Parser AtomoVal
 aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
            pos <- getPosition
            args <- many $ try arg
-           return $ callify args name
+           return $ ACall (callify args name) ANone
         <?> "function call"
         where
             arg = try aAttribute
@@ -747,6 +810,7 @@ aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
               <|> try (parens aInfix)
               <|> try (parens aCall)
               <|> try aVariable
+              <|> aAtom
               <|> aList
               <|> aHash
               <|> aTuple
@@ -773,6 +837,7 @@ aInfix = do val <- buildExpressionParser table targets
                        , op "/=" AssocNone
                        , op "<" AssocNone
                        , op ">" AssocNone
+                       , op "!" AssocNone
                        ]
                      ]
                      where
@@ -782,6 +847,7 @@ aInfix = do val <- buildExpressionParser table targets
              targets = try aCall
                    <|> try aIf
                    <|> try aDouble
+                   <|> aAtom
                    <|> aList
                    <|> aTuple
                    <|> aHash
@@ -808,12 +874,14 @@ readExpr = readOrThrow aExpr
 -- Read all expressions in a string
 readExprs :: String -> ThrowsError [AtomoVal]
 readExprs es = readOrThrow (many $ do x <- aExpr
-                                      optional eol <|> eof
+                                      spacing
+                                      eol <|> eof
                                       whiteSpace
                                       return x) es
 
 readScript :: String -> ThrowsError [(SourcePos, AtomoVal)]
 readScript es = readOrThrow (many $ do x <- aScriptExpr
-                                       optional eol <|> eof
+                                       spacing
+                                       eol <|> eof
                                        whiteSpace
                                        return x) es

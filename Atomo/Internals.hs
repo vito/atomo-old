@@ -12,8 +12,23 @@ debug x = trace (show x) x
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
+data Index = Define String | Class Type
+             deriving (Eq, Show)
+
 data Type = Name String | Type Type [Type] | Func Type Type | None | Poly Char
-            deriving (Show, Eq)
+            deriving (Show)
+
+instance Eq Type where
+    Func None a == b           = a == b
+    a           == Func None b = a == b
+    Name a      == Name b      = a == b
+    Type a as   == Type b bs   = a == b && as == bs
+    Func a a'   == Func b b'   = a == b && a' == b'
+    Poly a      == Poly b      = a == b
+    None        == None        = True
+    Name a      == Poly b      = True
+    Poly a      == Name b      = True
+    _           == _           = False
 
 data AtomoVal = AInt Integer
               | AChar Char
@@ -26,15 +41,15 @@ data AtomoVal = AInt Integer
               | AClass [AtomoVal] [AtomoVal]
               | AObject [AtomoVal]
               | AAttribute AtomoVal String
-              | ADefine String AtomoVal
+              | AAccessor AtomoVal String
+              | ADefine Index AtomoVal
               | ADefAttr AtomoVal String AtomoVal
               | AStatic String AtomoVal
-              | AMutate String AtomoVal
               | APrimCall String [AtomoVal]
-              | ALambda String AtomoVal [(String, AtomoVal)]
+              | ALambda PatternMatch AtomoVal [(PatternMatch, AtomoVal)]
               | ACall AtomoVal AtomoVal
               | ABlock [AtomoVal]
-              | AData String [Type] [AtomoVal]
+              | AData String [Type]
               | AConstruct String [Type] AtomoVal
               | AValue String [AtomoVal] AtomoVal
               | AIf AtomoVal AtomoVal AtomoVal
@@ -44,63 +59,12 @@ data AtomoVal = AInt Integer
               | AImport String [String]
               | AModule [AtomoVal]
               | AError String
+              | AAtom String
+              | AReceive AtomoVal
+              | APattern PatternMatch AtomoVal
+              | AFunction [AtomoVal] -- List of ALambdas to try different patterns
               | ANone
-              deriving (Eq)
-
-instance Show AtomoVal where
-    show (AInt v) = "AInt " ++ show v
-    show (AChar v) = "AChar " ++ show v
-    show (ADouble v) = "ADouble " ++ show v
-    show (AList v) = "AList " ++ show v
-    show (ATuple v) = "ATuple " ++ show v
-    show (AHash v) = "AHash " ++ show v
-    show (AString v) = "AString (" ++ show v ++ ")"
-    show (AVariable v) = "AVariable " ++ show v
-    show (AClass s i) = "AClass " ++ show s ++ " " ++ show i
-    show (AAttribute v a) = "AAttribute (" ++ show v ++ ") " ++ show a
-    show (AObject v) = "AObject " ++ show v
-    show (ADefine n v) = "ADefine " ++ show n ++ " (" ++ show v ++ ")"
-    show (ADefAttr o n v) = "ADefAttr (" ++ show o ++ ") " ++ show n ++ " (" ++ show v ++ ")"
-    show (AStatic n v) = "AStatic " ++ show n ++ " (" ++ show v ++ ")"
-    show (AMutate n v) = "AMutate " ++ show n ++ " " ++ show v
-    show (APrimCall n ps) = "APrimCall " ++ show n ++ " " ++ show ps
-    show (ALambda p c bs) = "ALambda " ++ show p ++ " (" ++ show c ++ ") " ++ show bs
-    show (ACall t a) = "ACall (" ++ show t ++ ") (" ++ show a ++ ")"
-    show (ABlock vs) = "ABlock " ++ show vs
-    show (AData n ps cs) = "AData " ++ show n ++ " " ++ show ps ++ " " ++ show cs
-    show (AConstruct n ps d) = "AConstruct " ++ show n ++ " " ++ show ps ++ " (AData ...)"
-    show (AValue n as d) = "AValue " ++ show n ++ " " ++ show as ++ " (AData ...)"
-    show (AIf c t f) = "AIf (" ++ show c ++ ") (" ++ show t ++ ") (" ++ show f ++ ")"
-    show (AReturn v) = "AReturn (" ++ show v ++ ")"
-    show (AType n t) = "AType " ++ show n ++ " (" ++ show t ++ ")"
-    show (AAnnot n t) = "AAnnot " ++ show n ++ " (" ++ show t ++ ")"
-    show (AImport f vs) = "AImport " ++ show f ++ " " ++ show vs
-    show (AModule as) = "AModule " ++ show as
-    show (ANone) = "ANone"
-
-
-fromAInt (AInt i) = i
-fromAInt (AValue "Int" [AInt i] _) = i
-fromAChar (AChar c) = c
-fromAChar (AValue "Char" [AChar c] _) = c
-fromADouble (ADouble d) = d
-fromADouble (AValue "Double" [ADouble d] _) = d
-fromAVariable (AVariable n) = n
-fromAList (AList l) = l
-fromAList (AString l) = fromAList l
-fromAString (AString s) = map fromAChar (fromAList s)
-fromAString (AList l) = map fromAChar (fromAList (AList l))
-fromAConstruct (AConstruct s _ _) = s
-
--- String to an AList of AChars
-toAString :: String -> AtomoVal
-toAString s = AString $ AList (map AChar s)
-
-list :: Type
-list = Type (Name "[]") [Name "a"]
-
-listOf :: Type -> Type
-listOf a = Type (Name "[]") [a]
+              deriving (Eq, Show)
 
 
 data AtomoError = NumArgs Int Int SourcePos
@@ -116,6 +80,41 @@ data AtomoError = NumArgs Int Int SourcePos
 instance Error AtomoError where
     noMsg = Default "An error has occurred" (newPos "unknown" 0 0)
     strMsg = flip Default (newPos "unknown" 0 0)
+
+
+data PatternMatch = PAny
+                  | PMatch AtomoVal
+                  | PName String
+                  | PNamed String PatternMatch
+                  | PCons String [PatternMatch]
+                  | PHeadTail PatternMatch PatternMatch
+                  | PList [PatternMatch]
+                  | PTuple [PatternMatch]
+                  deriving (Eq, Show)
+
+fromAInt (AInt i) = i
+fromAInt (AValue "Int" [AInt i] _) = i
+fromAChar (AChar c) = c
+fromAChar (AValue "Char" [AChar c] _) = c
+fromADouble (ADouble d) = d
+fromADouble (AValue "Double" [ADouble d] _) = d
+fromAVariable (AVariable n) = n
+fromAList (AList l) = l
+fromAList (AString l) = fromAList l
+fromAString (AString s) = map fromAChar (fromAList s)
+fromAString (AList l) = map fromAChar (fromAList (AList l))
+fromAConstruct (AConstruct s _ _) = s
+fromAAtom (AAtom n) = n
+
+-- String to an AList of AChars
+toAString :: String -> AtomoVal
+toAString s = AString $ AList (map AChar s)
+
+list :: Type
+list = Type (Name "[]") [Name "a"]
+
+listOf :: Type -> Type
+listOf a = Type (Name "[]") [a]
 
 result :: Type -> Type
 result (Func _ t) = t
@@ -144,27 +143,29 @@ pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine _ v)    = pretty v
 pretty (ADefAttr _ _ v) = pretty v
 pretty (AStatic _ v)    = pretty v
-pretty (AMutate _ v)    = pretty v
 pretty (AObject vs)     = "Object:\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
 pretty (ACall f a)      = "<Call (`" ++ pretty f ++ "') (`" ++ pretty a ++ "')>"
 pretty s@(AString _)    = show $ fromAString s
 pretty (ABlock es)      = intercalate "\n" $ map pretty es
-pretty (AData s as _)   = prettyType $ Type (Name s) as
+pretty (AData s as)     = prettyType $ Type (Name s) as
 pretty (AConstruct s [] _) = s
 pretty (AConstruct s ts _) = s ++ " " ++ intercalate " " (map prettyType ts)
 pretty (AValue v [] _)  = v
 pretty (AValue v as _)  = v ++ " " ++ intercalate " " (map pretty as)
 pretty (AAnnot n t)     = n ++ " :: " ++ prettyType t
-pretty v@(ALambda _ _ _) = "\\ " ++ intercalate " " (reverse $ lambdas v []) ++ "."
+pretty v@(ALambda _ _ _) = "\x03BB " ++ intercalate " " (map show $ reverse $ lambdas v []) ++ "."
                            where
-                               lambdas (ALambda n v _) acc = lambdas v (n : acc)
+                               lambdas (ALambda p v _) acc = lambdas v (p : acc)
                                lambdas _ acc = acc
 pretty (AClass ss ms) = "<Class (`" ++ statics ++ "') (`" ++ methods ++ "')>"
                         where
                             statics = intercalate "' `" (map (\(AStatic n _) -> n) ss)
-                            methods = intercalate "' `" (map (\(ADefine n _) -> n) ms)
+                            methods = intercalate "' `" (map (\(ADefine (Define n) _) -> n) ms)
 pretty (AError m)       = m
-pretty ANone            = ""
+pretty (AAtom n)        = "@" ++ n
+pretty (AReceive v)     = "<Receive>"
+pretty (APattern k v)   = "<Pattern (" ++ show k ++ ") (" ++ show v ++ ")>"
+pretty ANone            = "None"
 pretty a                = "TODO -- " ++ show a
 
 prettyError (NumArgs e f p)      = prettyPos p ++ "Expected " ++ show e ++ " args; found " ++ show f
@@ -182,6 +183,7 @@ prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++
 
 prettyType :: Type -> String
 prettyType (Name a) = a
+prettyType (Type (Name "[]") []) = "[a]"
 prettyType (Type (Name "[]") [t]) = "[" ++ prettyType t ++ "]"
 prettyType (Type (Name "()") ts) = "(" ++ intercalate ", " (map prettyType ts) ++ ")"
 prettyType (Type a ts) = prettyType a ++ " " ++ intercalate " " (map prettyType ts)
@@ -189,7 +191,7 @@ prettyType (Func None b) = prettyType b
 prettyType (Func a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
 prettyType (None) = "None"
 
-lambdify :: [String] -> AtomoVal -> AtomoVal
+lambdify :: [PatternMatch] -> AtomoVal -> AtomoVal
 lambdify [] b = b
 lambdify (s:ss) b = ALambda s (lambdify ss b) []
 
@@ -213,3 +215,23 @@ public (ABlock xs) = public' xs
                          public' [] = []
                          public' (v@(ADefine _ _):xs) = v : public' xs
                          public' (_:xs) = public' xs
+
+getType :: AtomoVal -> Type
+getType (AChar _) = Name "char"
+getType (ADouble _) = Name "double"
+getType (AList []) = Type (Name "[]") [Poly 'a']
+getType (AList as) = listOf $ getType (head as)
+getType (ATuple as) = Type (Name "()") $ map getType as
+getType (AHash _) = Name "hash"
+getType (AString _) = listOf (Name "char")
+getType (AType n v) = v
+getType (AConstruct _ [] d@(AData n ps)) = getType d
+getType (AConstruct _ ts d@(AData n ps)) = foldr Func (getType d) ts
+getType (AData n []) = Name n
+getType (AData n as) = Type (Name n) as
+getType (ALambda _ b _) = undefined -- TODO
+getType (AReturn r) = getType r
+getType (ADefine _ _) = undefined
+getType (AValue _ _ d@(AData n [])) = getType d
+getType (AValue c as (AData n ps)) = Type (Name n) ps -- TODO
+getType a = error ("Cannot get type of `" ++ pretty a ++ "'")

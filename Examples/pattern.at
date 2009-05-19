@@ -1,0 +1,64 @@
+data Bool: True | False
+data Maybe a: Just a | Nothing
+
+class [a]:
+    length []: 0
+    length (_:xs): 1 + xs.length
+
+length []: 0
+length (_:xs): 1 + 2
+
+and True True: True
+and _ _: False
+
+or True True: True
+or True _: True
+or False x: x
+or _ _: False
+
+lucky :: Int -> String
+lucky 7: "LUCKY NUMBER SEVEN!"
+lucky _: "Sorry, you're out of luck, pal!"
+
+deep (Just 1): True
+deep v@(Just n):
+    print ("Got value: " ++ show v)
+    print ("Just...  : " ++ show n)
+    False
+deep _: False
+
+atomMatch @foo: print "Foo!"
+atomMatch @bar: print "Bar!"
+atomMatch a: print ("Dunno?: " ++ show a)
+
+fst (a, b): a
+snd (a, b): b
+
+main:
+    dump (length [1, 2, 3])
+    dump (length ([1, 2, 3] ++ [4, 5]))
+    dump (length [])
+
+    dump (and True True)
+    dump (and True False)
+
+    dump (or True True)
+    dump (or True False)
+    dump (or False True)
+    dump (or False False)
+
+    dump ([1, 2, 3].length)
+
+    dump (lucky 7)
+    dump (lucky 1)
+
+    dump (deep (Just 1))
+    dump (deep (Just 2))
+    dump (deep (Nothing))
+
+    atomMatch @foo
+    atomMatch @bar
+    atomMatch @wtf
+
+    dump (fst (1, 2))
+    dump (snd (1, 2))

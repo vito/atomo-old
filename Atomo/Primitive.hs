@@ -7,7 +7,7 @@ import Data.Maybe (fromJust)
 
 -- Boolean
 primBool :: AtomoVal
-primBool = AData "Bool" [] [primTrueC, primFalseC]
+primBool = AData "Bool" []
 
 primTrueC :: AtomoVal
 primTrueC = AConstruct "True" [] primBool
@@ -35,7 +35,7 @@ isAInt (AValue "Int" _ _) = True
 isAInt _ = False
 
 primInt :: AtomoVal
-primInt = AData "Int" [] [primIntC]
+primInt = AData "Int" []
 
 primIntC :: AtomoVal
 primIntC = AConstruct "Int" [Name "a"] primInt
@@ -49,7 +49,7 @@ isADouble (AValue "Double" _ _) = True
 isADouble _ = False
 
 primDouble :: AtomoVal
-primDouble = AData "Double" [] [primDoubleC]
+primDouble = AData "Double" []
 
 primDoubleC :: AtomoVal
 primDoubleC = AConstruct "Double" [Name "a"] primDouble
@@ -63,7 +63,7 @@ isAChar (AValue "Char" _ _) = True
 isAChar _ = False
 
 primChar :: AtomoVal
-primChar = AData "Char" [] [primCharC]
+primChar = AData "Char" []
 
 primCharC :: AtomoVal
 primCharC = AConstruct "Char" [Name "a"] primChar
@@ -86,18 +86,18 @@ primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
             | isADouble a && isADouble b = doubleToPrim $ fromADouble a / fromADouble b
 
 primFuncs :: [(String, ([String], [AtomoVal] -> IOThrowsError AtomoVal))]
-primFuncs = [ ("++", (["a", "b"], concatFunc))
-            , ("==", (["a", "b"], equalityFunc))
+primFuncs = [ ("++", (["x", "b"], concatFunc))
+            , ("==", (["x", "b"], equalityFunc))
             , ("/=", (["a", "b"], inequalityFunc))
-            , ("+", (["a", "b"], addFunc)) -- Where "a" is `int` or `double`.
-            , ("-", (["a", "b"], subFunc)) -- However, this needs to be expanded
-            , ("*", (["a", "b"], mulFunc)) -- to typeclasses eventually. (TODO)
-            , ("/", (["a", "b"], divFunc))
-            , ("<", (["a", "b"], lessFunc))
-            , ("show", (["a"], showFunc))
+            , ("+", (["x", "b"], addFunc)) -- Where "a" is `int` or `double`.
+            , ("-", (["x", "b"], subFunc)) -- However, this needs to be expanded
+            , ("*", (["x", "b"], mulFunc)) -- to typeclasses eventually. (TODO)
+            , ("/", (["x", "b"], divFunc))
+            , ("<", (["x", "b"], lessFunc))
+            , ("show", (["x"], showFunc))
 
             -- IO Primitives
-            , ("print", (["a"], printFunc))
+            , ("print", (["x"], printFunc))
             , ("dump", (["a"], dumpFunc))
             ]
             where
@@ -110,8 +110,8 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
 
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
 
-                equalityFunc [ (AValue a as (AData ad _ _))
-                             , (AValue b bs (AData bd _ _))
+                equalityFunc [ (AValue a as (AData ad _))
+                             , (AValue b bs (AData bd _))
                              ] = return $ boolToPrim (a == a && as == bs && ad == bd)
                 equalityFunc [a, b] = return $ boolToPrim (a == b)
 
