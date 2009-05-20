@@ -2,6 +2,7 @@ module Atomo.Primitive where
 
 import Atomo.Internals
 
+import Control.Concurrent.Chan
 import Control.Monad.Trans
 import Data.Maybe (fromJust)
 
@@ -86,18 +87,19 @@ primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
             | isADouble a && isADouble b = doubleToPrim $ fromADouble a / fromADouble b
 
 primFuncs :: [(String, ([String], [AtomoVal] -> IOThrowsError AtomoVal))]
-primFuncs = [ ("++", (["x", "b"], concatFunc))
-            , ("==", (["x", "b"], equalityFunc))
+primFuncs = [ ("++", (["a", "b"], concatFunc))
+            , ("==", (["a", "b"], equalityFunc))
             , ("/=", (["a", "b"], inequalityFunc))
-            , ("+", (["x", "b"], addFunc)) -- Where "a" is `int` or `double`.
-            , ("-", (["x", "b"], subFunc)) -- However, this needs to be expanded
-            , ("*", (["x", "b"], mulFunc)) -- to typeclasses eventually. (TODO)
-            , ("/", (["x", "b"], divFunc))
-            , ("<", (["x", "b"], lessFunc))
-            , ("show", (["x"], showFunc))
+            , ("+", (["a", "b"], addFunc)) -- Where "a" is `int` or `double`.
+            , ("-", (["a", "b"], subFunc)) -- However, this needs to be expanded
+            , ("*", (["a", "b"], mulFunc)) -- to typeclasses eventually. (TODO)
+            , ("/", (["a", "b"], divFunc))
+            , ("<", (["a", "b"], lessFunc))
+            , ("!", (["a", "b"], sendFunc))
+            , ("show", (["a"], showFunc))
 
             -- IO Primitives
-            , ("print", (["x"], printFunc))
+            , ("print", (["a"], printFunc))
             , ("dump", (["a"], dumpFunc))
             ]
             where
@@ -106,8 +108,6 @@ primFuncs = [ ("++", (["x", "b"], concatFunc))
                 mulFunc [a, b] = return $ primMul a b
                 divFunc [a, b] = return $ primDiv a b
                 
-                showFunc [a] = return $ toAString $ pretty a
-
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
 
                 equalityFunc [ (AValue a as (AData ad _))
@@ -118,6 +118,11 @@ primFuncs = [ ("++", (["x", "b"], concatFunc))
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
 
                 lessFunc [a, b] = return $ boolToPrim $ (<) (fromAInt a) (fromAInt b)
+
+                sendFunc [(AProcess _ chan), v] = do liftIO (writeChan chan v)
+                                                     return ANone
+
+                showFunc [a] = return $ toAString $ pretty a
 
                 printFunc [x] = liftIO $ (putStrLn . fromAString) x >> return ANone
                 dumpFunc [x] = liftIO $ (putStrLn . pretty) x >> return ANone

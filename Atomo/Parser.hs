@@ -376,12 +376,12 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                         , P.reservedOpNames = ["=", "=>", "->", "::", ":="]
+                         , P.reservedOpNames = ["=", "=>", "->", "::", ":=", "!"]
                          , P.reservedNames   = ["if", "else", "elseif", "while",
                                                 "do", "class", "data", "type",
                                                 "where", "module", "infix",
                                                 "infixl", "infixr", "import",
-                                                "return", "receive"]
+                                                "return", "receive", "spawn"]
                          , P.caseSensitive   = True
                          }
 
@@ -472,6 +472,7 @@ aExpr = aLambda
     <|> try aBind
     <|> try aAnnot
     <|> try aInfix
+    <|> try aSpawn
     <|> try aCall
     <|> try aAttribute
     <|> try aAccessor
@@ -795,6 +796,12 @@ aString = stringLiteral >>= return . toAString
 aChar :: Parser AtomoVal
 aChar = charLiteral >>= return . charToPrim
         <?> "character"
+
+-- Thread spawning
+aSpawn :: Parser AtomoVal
+aSpawn = do reserved "spawn"
+            call <- aCall
+            return $ ASpawn call
 
 -- Function call (prefix)
 aCall :: Parser AtomoVal

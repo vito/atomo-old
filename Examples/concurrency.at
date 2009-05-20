@@ -1,0 +1,23 @@
+main: volley 5
+
+volley n:
+    po := spawn pong
+    spawn ping n po
+
+pong:
+    receive:
+        @finished: print "         | ."
+        (p, pid):
+            print "       . |"
+            pid ! @pong
+            pong
+
+ping 0 pid:
+    pid ! @finished
+    print "Ping finished"
+ping n pid:
+    pid ! (@ping, this)
+    receive:
+        @pong: print "|  .      "
+
+    ping (n - 1) pid

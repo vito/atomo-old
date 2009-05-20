@@ -1,5 +1,7 @@
 module Atomo.Internals where
 
+import Control.Concurrent
+import Control.Concurrent.Chan
 import Control.Monad.Error
 import Data.List (intercalate)
 import Debug.Trace
@@ -12,7 +14,7 @@ debug x = trace (show x) x
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
-data Index = Define String | Class Type
+data Index = Define String | Class Type | Process ThreadId
              deriving (Eq, Show)
 
 data Type = Name String | Type Type [Type] | Func Type Type | None | Poly Char
@@ -29,6 +31,11 @@ instance Eq Type where
     Name a      == Poly b      = True
     Poly a      == Name b      = True
     _           == _           = False
+
+instance Eq (Chan a) where
+    _ == _ = False
+instance Show (Chan a) where
+    show _ = "<Channel>"
 
 data AtomoVal = AInt Integer
               | AChar Char
@@ -60,7 +67,9 @@ data AtomoVal = AInt Integer
               | AModule [AtomoVal]
               | AError String
               | AAtom String
+              | ASpawn AtomoVal
               | AReceive AtomoVal
+              | AProcess ThreadId (Chan AtomoVal)
               | APattern PatternMatch AtomoVal
               | AFunction [AtomoVal] -- List of ALambdas to try different patterns
               | ANone

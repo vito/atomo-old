@@ -8,6 +8,9 @@ import Atomo.Parser
 import Atomo.Primitive
 import Atomo.Typecheck
 
+import Control.Concurrent
+import Control.Concurrent.Chan
+import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
@@ -76,6 +79,8 @@ eval e (AHash vs)     = do hash <- mapM (\(n, (t, v)) -> do val <- eval e v
                            return $ AHash hash
 eval e (AList as)     = do list <- mapM (eval e) as
                            return $ AList list
+eval e (AVariable "this") = do tid <- liftIO myThreadId
+                               getDef e (Process tid)
 eval e (AVariable n)  = getVal e n >>= eval e
 eval e (ADefine n v@(ALambda _ _ _)) = defineVal e n v
 eval e (ADefine n v@(ABlock _)) = defineVal e n v
@@ -123,6 +128,15 @@ eval e (AAttribute t n) = do target <- eval e t
                                           case getAVal cs (Define n) of
                                                Just v -> eval e v
                                                Nothing -> throwError $ Unknown $ "Type class does not have method `" ++ n ++ "'."
+eval e (ASpawn c) = do pid <- liftIO $ forkIO (runIOThrows (eval e c) >> return ())
+                       chan <- liftIO newChan
+                       defineVal e (Process pid) (AProcess pid chan)
+                       return (AProcess pid chan)
+eval e (AReceive (ABlock ps)) = do id <- liftIO myThreadId
+                                   (AProcess pid chan) <- getDef e (Process id)
+                                   val <- liftIO (readChan chan)
+                                   run <- matchExec e ps val
+                                   eval e run
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -302,3 +316,5 @@ main = do args <- getArgs
                3 -> do source <- readFile (args !! 0)
                        dumpAST source
                _ -> putStrLn "`atomo` only takes 1 or 0 arguments."
+
+          threadDelay 1000 -- Temporary tweak so that threads don't get killed.

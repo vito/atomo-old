@@ -50,6 +50,7 @@ getRef e i = do m <- maybeRef e i
                      Nothing -> case i of
                                      (Define n) -> error $ "Could not find definition `" ++ n ++ "'"
                                      (Class t) -> error $ "Could not find class `" ++ prettyType t ++ "'"
+                                     (Process t) -> error $ "Could not find process `" ++ show t ++ "'"
                      Just v -> return v
 
 maybeRef :: Env -> Index -> IOThrowsError (Maybe (IORef AtomoVal))
@@ -104,3 +105,10 @@ matchAll e (a:as) (b:bs) = do match <- pMatch e a b
                               if match
                                  then matchAll e as bs
                                  else return False
+
+matchExec :: Env -> [AtomoVal] -> AtomoVal -> IOThrowsError AtomoVal
+matchExec e [] _ = error "Non-exhaustive pattern match."
+matchExec e ((APattern p c):ps) v = do m <- pMatch e p v
+                                       if m
+                                          then return c
+                                          else matchExec e ps v
