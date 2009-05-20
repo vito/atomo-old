@@ -102,7 +102,7 @@ data PatternMatch = PAny
                   deriving (Eq, Show)
 
 fromAInt (AInt i) = i
-fromAInt (AValue "Int" [AInt i] _) = i
+fromAInt (AValue "Integer" [AInt i] _) = i
 fromAChar (AChar c) = c
 fromAChar (AValue "Char" [AChar c] _) = c
 fromADouble (ADouble d) = d
@@ -140,7 +140,7 @@ pretty :: AtomoVal -> String
 pretty (AInt int)       = show int
 pretty (AChar char)     = show char
 pretty (ADouble double) = show double
-pretty (AValue "Int" [AInt i] _) = show i
+pretty (AValue "Integer" [AInt i] _) = show i
 pretty (AValue "Iouble" [ADouble d] _) = show d
 pretty (AValue "Char" [AChar c] _) = show c
 pretty (AList str@(AChar _:_)) = show $ AString $ AList str

@@ -16,13 +16,10 @@ import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 import qualified Text.Parsec.Token as P
 
-sepBy p sep         = sepBy1 p sep <|> return []
-
-sepBy1 p sep        = do{ x <- p
-                        ; whiteSpace
-                        ; xs <- many (sep >> whiteSpace >> p)
-                        ; return (x:xs)
-                        }
+sepBy p sep  = sepBy1 p sep <|> return []
+sepBy1 p sep = do x <- p
+                  xs <- many (try (whiteSpace >> sep >> whiteSpace >> p))
+                  return (x:xs)
 
 -- Custom makeTokenParser with tweaked whiteSpace rules
 makeTokenParser languageDef
@@ -521,12 +518,14 @@ aImport = do reserved "import"
                              "" -> commaSep1 aModule
                              _ -> commaSep1 (aReference <|> symbol "*")
              return $ AImport from targets
+          <?> "import"
 
 -- Atom (@foo)
 aAtom :: Parser AtomoVal
 aAtom = do char '@'
            name <- lowIdentifier
            return $ AAtom name
+        <?> "atom"
 
 -- Receive
 aReceive :: Parser AtomoVal
@@ -535,6 +534,7 @@ aReceive = do reserved "receive"
                                       code <- aBlock
                                       return $ APattern atom code)
               return $ AReceive matches
+           <?> "receive"
     
 -- Class
 aClass :: Parser AtomoVal
@@ -542,6 +542,7 @@ aClass = do reserved "class"
             name <- aSimpleType
             code <- aBlockOf (try aStaticAnnot <|> try aAnnot <|> try aStatic <|> try aMethod)
             return $ ADefine (Class name) $ AClass (static code) (public code)
+         <?> "class"
 
 -- Static definition
 aStatic :: Parser AtomoVal
@@ -614,6 +615,7 @@ aSimpleType = try (do con <- capIdentifier
           <|> (lexeme (satisfy isLower) >>= return . Poly)
           <|> try (parens aSimpleType)
           <|> try (parens aType)
+          <?> "type"
 
 -- Type
 aType :: Parser Type
@@ -633,6 +635,7 @@ aAnnot = do name <- identifier <|> operator
             symbol "::"
             types <- aType
             return $ AAnnot name types
+         <?> "type annotation"
 
 -- Type composition
 aNewType :: Parser AtomoVal
@@ -642,6 +645,7 @@ aNewType = do reserved "type"
               whiteSpace
               theType <- aType
               return $ AType name theType
+           <?> "type"
 
 -- Lambda
 aLambda :: Parser AtomoVal
@@ -649,6 +653,7 @@ aLambda = do reserved "do"
              params <- many aPattern
              code <- aBlock
              return $ lambdify params code
+          <?> "lambda"
 
 -- Pattern matching
 aPattern :: Parser PatternMatch
@@ -684,6 +689,7 @@ aReturn :: Parser AtomoVal
 aReturn = do reserved "return"
              expr <- option ANone (aExpr <|> parens aExpr)
              return $ AReturn expr
+          <?> "return"
 -- Block
 aBlock :: Parser AtomoVal
 aBlock = aBlockOf aExpr
@@ -724,6 +730,7 @@ aData = do reserved "data"
            constructors <- aConstructor `sepBy` (symbol "|")
            let d = AData name params
            return $ ABlock (map (\c -> ADefine (Define $ fromAConstruct c) (cons c)) (map ($ d) constructors))
+        <?> "data"
         where
             cons (AConstruct n ts d) = lambdify (map PName as) (AValue n (map AVariable as) d)
                                        where as = map (\c -> [c]) $ take (length ts) ['a'..]
@@ -736,6 +743,7 @@ aIf = do reserved "if"
          next <- lookAhead anyToken
          other <- try (whiteSpace >> reserved "else" >> aBlock) <|> (return $ ABlock [])
          return $ AIf cond code other
+      <?> "if statement"
          
 -- Variable assignment
 aDefine :: Parser AtomoVal
@@ -748,7 +756,7 @@ aDefine = do name <- lowIdentifier <|> parens operator
                                      code <- aBlock
                                      return $ lambdify args code))
              return $ ADefine (Define name) (AFunction $ (lambdify args code : others))
-          <?> "definition"
+          <?> "function definition"
 
 -- Variable definition
 aBind :: Parser AtomoVal
@@ -756,6 +764,7 @@ aBind = do name <- lowIdentifier <|> parens operator
            reservedOp ":="
            val <- aExpr
            return $ ADefine (Define name) val
+        <?> "variable definition"
 
 -- Parse a list (mutable list of values of one type)
 aList :: Parser AtomoVal
@@ -802,6 +811,7 @@ aSpawn :: Parser AtomoVal
 aSpawn = do reserved "spawn"
             call <- aCall
             return $ ASpawn call
+         <?> "spawn"
 
 -- Function call (prefix)
 aCall :: Parser AtomoVal

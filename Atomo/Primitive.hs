@@ -32,17 +32,17 @@ boolToPrim False = primFalse
 
 -- Integers
 isAInt :: AtomoVal -> Bool
-isAInt (AValue "Int" _ _) = True
+isAInt (AValue "Integer" _ _) = True
 isAInt _ = False
 
 primInt :: AtomoVal
-primInt = AData "Int" []
+primInt = AData "Integer" []
 
 primIntC :: AtomoVal
-primIntC = AConstruct "Int" [Name "a"] primInt
+primIntC = AConstruct "Integer" [Name "a"] primInt
 
 intToPrim :: Integer -> AtomoVal
-intToPrim i = AValue "Int" [AInt i] primInt
+intToPrim i = AValue "Integer" [AInt i] primInt
 
 -- Doubles
 isADouble :: AtomoVal -> Bool

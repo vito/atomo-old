@@ -1,23 +1,41 @@
+main :: ()
 main: volley 5
 
+volley :: Integer -> ()
 volley n:
-    po := spawn pong
-    spawn ping n po
+    po := spawn pong -- Spawn "pong" and bind its process to "po"
+    spawn ping n po  -- Spawn "ping n po".
+    return
 
+pong :: ()
 pong:
+    -- Wait for messages (any Atomo value)
+    -- from other processes
     receive:
-        @finished: print "         | ."
-        (p, pid):
-            print "       . |"
+        -- @finished atom; end the loop
+        @finished: print "         | ." -- Missed :(
+
+        -- @ping atom and its process stored in a tuple
+        -- Send @pong to @ping and continue waiting for
+        -- more messages by looping
+        (@ping, pid):
+            print "       . |" -- Countered!
             pid ! @pong
             pong
 
+ping :: Integer -> ()
 ping 0 pid:
-    pid ! @finished
+    pid ! @finished -- Send @finished (an atom) to the "pid" process
     print "Ping finished"
 ping n pid:
     pid ! (@ping, this)
-    receive:
-        @pong: print "|  .      "
 
-    ping (n - 1) pid
+    -- Wait for messages (any Atomo value)
+    -- from other processes
+    receive:
+        -- Received @pong atom; ping back
+        @pong:
+            print "|  .      "
+            ping (n - 1) pid
+
+

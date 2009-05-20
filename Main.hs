@@ -180,7 +180,6 @@ include e ts s m = case tree of
                                                             (AData n _) -> check a (Define n) t
                                                             (AType n _ ) -> check a (Define n) t
                                                             (ADefine n _) -> check a n t
-                                                            (AAnnot n _ ) -> check a (Define n) t
                                                             _ -> include' e ts as tree
                                                         where
                                                             check :: AtomoVal -> Index -> Index -> IOThrowsError AtomoVal
@@ -212,7 +211,7 @@ getAVal (a:as) t = case a of
                         (AType n _ ) -> check a (Define n) t
                         (ADefine n v) -> check v n t
                         (AStatic n v) -> check v (Define n) t
-                        (AAnnot n _ ) -> check a (Define n) t
+                        (AAnnot _ n) -> check a (Class n) t
                         _ -> getAVal as t
                    where
                        check a n t = if n == t
