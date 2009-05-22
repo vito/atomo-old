@@ -1,0 +1,20 @@
+-- Simple alias to ++
+(?) a b: a ++ b
+
+-- Get list element at index
+(!!) [] _: error "Prelude:(!!): Index too large"
+(!!) (x|xs) 0: x
+(!!) (_|xs) n:
+    if n < 0:
+        error "Prelude:(!!): Negative index"
+    else:
+        xs !! (n - 1)
+
+main:
+    dump ([1, 2] ? [2, 4, 6])
+    dump ((?) [1, 2] [2, 3, 4])
+    dump ([1, 2] ++ [2, 3, 4])
+    dump ([1, 2, 3] !! 0)
+    dump ([1, 2, 3] !! 2)
+    dump ([1, 2, 3] !! -2)
+    dump ([] !! 100)

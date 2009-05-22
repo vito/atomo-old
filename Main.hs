@@ -14,7 +14,8 @@ import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Error
 import Control.Monad.Trans
-import Data.List (intercalate)
+import Data.List (intercalate, sortBy)
+import Data.IORef
 import Debug.Trace
 import System
 import System.Console.Haskeline
@@ -28,9 +29,6 @@ primIf e (AValue "True" _ _)  a _ = eval e a
 primIf e (AValue "False" _ _) _ b = eval e b
 primIf e c a b = error ("Value is not boolean: " ++ pretty c)
 
-patternMatch :: Scope -> String -> AtomoVal -> IOThrowsError ()
-patternMatch s ps as = return ()
-
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
 apply e (AClass _ cs) a = case getAVal cs (Define "new") of
@@ -40,11 +38,13 @@ apply e (AClass _ cs) a = case getAVal cs (Define "new") of
                                             return object
                           where
                               object = AObject cs
+apply e (AFunction (l:_)) ANone = apply e l ANone
+apply e t ANone = eval e t
 apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
-                                  (AValue n as d) -> do env <- bind
+                                  (AValue n as c) -> do env <- bind
                                                         args <- mapM (eval env) as
-                                                        return $ AValue n args d
+                                                        return $ AValue n args c
                                   (ABlock c) -> do env <- bind
                                                    
                                                    res <- eval env (ABlock c)
@@ -58,16 +58,15 @@ apply e (ALambda p c bs) a = case c of
                                            let env = new : e
                                            mapM_ (\(p, v) -> pMatch env p v) $ ((p, a) : bs)
                                            return env
-apply e (AFunction (l:_)) ANone = apply e l ANone
 apply e (AFunction ls) a = if null valid
                               then error $ "Non-exhaustive pattern match in function."
-                              else return $ AFunction bound
+                              else case (head valid) of
+                                        ALambda _ (ALambda _ _ _) _ -> return $ AFunction bound
+                                        l -> apply e l a
                            where
                                valid = filter (\(ALambda p _ _) -> pMatches p a) ls
                                bound = map setBound valid
                                setBound (ALambda p (ALambda p' c' bs') bs) = ALambda p' c' ((p, a) : (bs ++ bs'))
-                               setBound (ALambda p c bs) = ALambda p c ((p, a) : bs)
-apply e t ANone = eval e t
 apply _ t a = error ("Cannot apply `" ++ pretty a ++ "' on `" ++ pretty t ++ "'")
 
 eval :: Env -> AtomoVal -> IOThrowsError AtomoVal
@@ -124,10 +123,17 @@ eval e (AAttribute t n) = do target <- eval e t
                                   (AClass ss _) -> case getAVal ss (Define n) of
                                                         Just v -> eval e v
                                                         Nothing -> throwError $ Unknown $ "Class does not have static method `" ++ n ++ "'."
-                                  _ -> do (AClass _ cs) <- getDef e (Class (getType target))
-                                          case getAVal cs (Define n) of
-                                               Just v -> eval e v
-                                               Nothing -> throwError $ Unknown $ "Type class does not have method `" ++ n ++ "'."
+                                  _ -> do classes <- getClasses e (getType target)
+                                          if null classes
+                                             then error ("Could not find class `" ++ prettyType (getType target) ++ "'")
+                                             else do
+                                          clss <- mapM (\(i, v) -> liftIO (readIORef v)) (sortBy (\(Class a, _) (Class b, _) -> compare b a) classes)
+                                          findMethod clss n
+                          where
+                              findMethod [] n = throwError $ Unknown $ "Class does not have attribute `" ++ n ++ "'."
+                              findMethod ((AClass _ cs):clss) n = case getAVal cs (Define n) of
+                                                                       Just v -> eval e v
+                                                                       Nothing -> findMethod clss n
 eval e (ASpawn c) = do pid <- liftIO $ forkIO (runIOThrows (eval e c) >> return ())
                        chan <- liftIO newChan
                        defineVal e (Process pid) (AProcess pid chan)
@@ -305,6 +311,7 @@ repl e = do input <- getInputLine "> "
 
 main = do args <- getArgs
           env <- nullEnv
+
           case length args of
                0 -> do putStrLn "Atomo 0.0"
                        runInputT defaultSettings (repl env)

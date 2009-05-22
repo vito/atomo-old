@@ -482,6 +482,22 @@ aExpr = aLambda
     <|> aChar
     <|> aVariable
 
+aSimpleExpr :: Parser AtomoVal
+aSimpleExpr = aAtom
+          <|> try aBind
+          <|> try aInfix
+          <|> try aCall
+          <|> try aAttribute
+          <|> try aAccessor
+          <|> try aDouble
+          <|> aList
+          <|> aHash
+          <|> aTuple
+          <|> aNumber
+          <|> aString
+          <|> aChar
+          <|> aVariable
+
 aMainExpr :: Parser AtomoVal
 aMainExpr = aImport
         <|> aData
@@ -673,7 +689,7 @@ aPattern = (symbol "_" >> return PAny)
        <|> try (do list <- brackets (commaSep aPattern)
                    return $ PList list)
        <|> try (parens (do h <- aPattern
-                           colon
+                           symbol "|"
                            t <- aPattern
                            return $ PHeadTail h t))
        <|> (do val <- aChar
@@ -732,15 +748,14 @@ aData = do reserved "data"
            return $ ABlock (map (\c -> ADefine (Define $ fromAConstruct c) (cons c)) (map ($ d) constructors))
         <?> "data"
         where
-            cons (AConstruct n ts d) = lambdify (map PName as) (AValue n (map AVariable as) d)
-                                       where as = map (\c -> [c]) $ take (length ts) ['a'..]
+            cons c@(AConstruct n ts d) = lambdify (map PName as) (AValue n (map AVariable as) c)
+                                         where as = map (\c -> [c]) $ take (length ts) ['a'..]
 
 -- If/If-Else
 aIf :: Parser AtomoVal
 aIf = do reserved "if"
-         cond <- aExpr
+         cond <- aSimpleExpr
          code <- aBlock
-         next <- lookAhead anyToken
          other <- try (whiteSpace >> reserved "else" >> aBlock) <|> (return $ ABlock [])
          return $ AIf cond code other
       <?> "if statement"
@@ -751,7 +766,7 @@ aDefine = do name <- lowIdentifier <|> parens operator
              args <- many aPattern
              code <- aBlock
              others <- many (try (do whiteSpace
-                                     symbol name
+                                     symbol name <|> parens (symbol name)
                                      args <- many aPattern
                                      code <- aBlock
                                      return $ lambdify args code))
@@ -818,7 +833,7 @@ aCall :: Parser AtomoVal
 aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
            pos <- getPosition
            args <- many $ try arg
-           return $ ACall (callify args name) ANone
+           return $ callify args name
         <?> "function call"
         where
             arg = try aAttribute
@@ -841,7 +856,7 @@ aInfix = do val <- buildExpressionParser table targets
             return val
          <?> "infix call"
          where
-             table = [ []
+             table = [ [ any ]
                      , []
                      , [ op "*" AssocLeft
                        , op "/" AssocLeft
@@ -849,7 +864,9 @@ aInfix = do val <- buildExpressionParser table targets
                      , [ op "+" AssocLeft
                        , op "-" AssocLeft
                        ]
-                     , [ op "++" AssocRight ]
+                     , [ op "++" AssocRight
+                       , op "|" AssocRight
+                       ]
                      , [ op "==" AssocNone
                        , op "/=" AssocNone
                        , op "<" AssocNone
@@ -859,10 +876,16 @@ aInfix = do val <- buildExpressionParser table targets
                      ]
                      where
                          op s a = Infix ((reservedOp s >> return (call s)) <?> "operator") a
-                         call op a b = callify [a, b] (AVariable op)
+
+             any = Infix (try (do op <- operator
+                                  if op `elem` ["++", "<", ":"]
+                                     then fail "Reserved operator"
+                                     else return (call op) <?> "any operator")) AssocLeft
+
+             call op a b = callify [a, b] (AVariable op)
 
              targets = try aCall
-                   <|> try aIf
+                   <|> try (parens aExpr)
                    <|> try aDouble
                    <|> aAtom
                    <|> aList

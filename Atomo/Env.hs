@@ -60,6 +60,16 @@ maybeRef (s:ss) n = do env <- liftIO $ readIORef s
                             Just v -> return $ Just v
                             Nothing -> maybeRef ss n
 
+getClasses :: Env -> Type -> IOThrowsError [(Index, IORef AtomoVal)]
+getClasses [] t = return []
+getClasses (s:ss) t = do env <- liftIO $ readIORef s
+                         rest <- getClasses ss t
+                         return (findClasses env t [] ++ rest)
+                 where
+                    findClasses [] _ acc = acc
+                    findClasses ((Class f, v):es) t acc | match t f = findClasses es t ((Class f, v) : acc)
+                                                        | otherwise = findClasses es t acc
+                    findClasses (_:es) t acc = findClasses es t acc
 
 pMatch :: Env -> PatternMatch -> AtomoVal -> IOThrowsError Bool
 pMatch e PAny _ = return True

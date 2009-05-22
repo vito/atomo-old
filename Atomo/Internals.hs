@@ -18,19 +18,34 @@ data Index = Define String | Class Type | Process ThreadId
              deriving (Eq, Show)
 
 data Type = Name String | Type Type [Type] | Func Type Type | None | Poly Char
-            deriving (Show)
+            deriving (Eq, Show)
 
-instance Eq Type where
-    Func None a == b           = a == b
-    a           == Func None b = a == b
-    Name a      == Name b      = a == b
-    Type a as   == Type b bs   = a == b && as == bs
-    Func a a'   == Func b b'   = a == b && a' == b'
-    Poly a      == Poly b      = a == b
-    None        == None        = True
-    Name a      == Poly b      = True
-    Poly a      == Name b      = True
-    _           == _           = False
+match (Func None a) b             = match a b
+match a             (Func None b) = match a b
+match (Name a)      (Name b)      = a == b
+match (Type a as)   (Type b bs)   = match a b && (and $ zipWith match as bs)
+match (Func a a')   (Func b b')   = match a b && match a' b'
+match (Poly a)      (Poly b)      = a == b
+match (None)        (None)        = True
+match (Name a)      (Poly b)      = True
+match (Poly a)      (Name b)      = False
+match _             _             = False
+
+instance Ord Type where
+    compare (Poly _) (Name _) = LT
+    compare (Name _) (Poly _) = GT
+    compare (Name _) (Name _) = EQ
+    compare (Poly _) (Poly _) = EQ
+    compare (Type a as) (Type b bs) | compare a b == GT = GT
+                                    | compare a b == EQ = compare (zipWith compare as bs) (zipWith compare bs as)
+                                    | otherwise = LT
+    compare (Func af at) (Func bf bt) | compare af bf == GT = GT
+                                      | compare af bf == EQ = compare at bt
+                                      | otherwise = LT
+    compare _ (Poly _) = GT
+    compare (Poly _) _ = LT
+    compare _ _ = EQ
+
 
 instance Eq (Chan a) where
     _ == _ = False
@@ -141,15 +156,15 @@ pretty (AInt int)       = show int
 pretty (AChar char)     = show char
 pretty (ADouble double) = show double
 pretty (AValue "Integer" [AInt i] _) = show i
-pretty (AValue "Iouble" [ADouble d] _) = show d
+pretty (AValue "Double" [ADouble d] _) = show d
 pretty (AValue "Char" [AChar c] _) = show c
-pretty (AList str@(AChar _:_)) = show $ AString $ AList str
+pretty (AList str@(AChar _:_)) = pretty $ AString $ AList str
 pretty (AList list)     = "[" ++ (intercalate ", " (map pretty list)) ++ "]"
 pretty (AHash es)       = "{ " ++ (intercalate ", " (map prettyVal es)) ++ " }"
                           where prettyVal (n, (t, v)) = (prettyType t) ++ " " ++ n ++ ": " ++ pretty v
 pretty (ATuple vs)      = "(" ++ (intercalate ", " (map pretty vs)) ++ ")"
 pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
-pretty (ADefine _ v)    = pretty v
+pretty (ADefine n v)    = "<`" ++ show n ++ "': " ++ pretty v ++ ">"
 pretty (ADefAttr _ _ v) = pretty v
 pretty (AStatic _ v)    = pretty v
 pretty (AObject vs)     = "Object:\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
@@ -162,7 +177,7 @@ pretty (AConstruct s ts _) = s ++ " " ++ intercalate " " (map prettyType ts)
 pretty (AValue v [] _)  = v
 pretty (AValue v as _)  = v ++ " " ++ intercalate " " (map pretty as)
 pretty (AAnnot n t)     = n ++ " :: " ++ prettyType t
-pretty v@(ALambda _ _ _) = "\x03BB " ++ intercalate " " (map show $ reverse $ lambdas v []) ++ "."
+pretty v@(ALambda _ _ _) = "\x03BB " ++ intercalate " " (map prettyPattern $ reverse $ lambdas v []) ++ "."
                            where
                                lambdas (ALambda p v _) acc = lambdas v (p : acc)
                                lambdas _ acc = acc
@@ -174,7 +189,8 @@ pretty (AError m)       = m
 pretty (AAtom n)        = "@" ++ n
 pretty (AReceive v)     = "<Receive>"
 pretty (APattern k v)   = "<Pattern (" ++ show k ++ ") (" ++ show v ++ ")>"
-pretty ANone            = "None"
+pretty (AFunction ls)   = "<Function (" ++ intercalate ") (" (map pretty ls) ++ ")>"
+pretty ANone            = "~"
 pretty a                = "TODO -- " ++ show a
 
 prettyError (NumArgs e f p)      = prettyPos p ++ "Expected " ++ show e ++ " args; found " ++ show f
@@ -185,6 +201,15 @@ prettyError (UnboundVar n p)     = prettyPos p ++ "Reference to unknown variable
 prettyError (Parser e)           = "Parse error at " ++ show e
 prettyError (Default m p)        = prettyPos p ++ m
 prettyError (Unknown m)          = m
+
+prettyPattern PAny = "_"
+prettyPattern (PMatch v) = pretty v
+prettyPattern (PName a) = a
+prettyPattern (PNamed n p) = n ++ "@" ++ prettyPattern p
+prettyPattern (PCons n ps) = "(" ++ n ++ " " ++ intercalate " " (map prettyPattern ps) ++ ")"
+prettyPattern (PHeadTail h t) = "(" ++ prettyPattern h ++ ":" ++ prettyPattern t ++ ")"
+prettyPattern (PList ps) = "[" ++ intercalate ", " (map prettyPattern ps) ++ "]"
+prettyPattern (PTuple ps) = "(" ++ intercalate ", " (map prettyPattern ps) ++ ")"
 
 prettyPos :: SourcePos -> String
 prettyPos p | null $ sourceName p = "Line " ++ show (sourceLine p) ++ " Col " ++ show (sourceColumn p) ++ ":\n    " 
@@ -198,6 +223,7 @@ prettyType (Type (Name "()") ts) = "(" ++ intercalate ", " (map prettyType ts) +
 prettyType (Type a ts) = prettyType a ++ " " ++ intercalate " " (map prettyType ts)
 prettyType (Func None b) = prettyType b
 prettyType (Func a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
+prettyType (Poly a) = [a]
 prettyType (None) = "None"
 
 lambdify :: [PatternMatch] -> AtomoVal -> AtomoVal
@@ -241,6 +267,20 @@ getType (AData n as) = Type (Name n) as
 getType (ALambda _ b _) = undefined -- TODO
 getType (AReturn r) = getType r
 getType (ADefine _ _) = undefined
-getType (AValue _ _ d@(AData n [])) = getType d
-getType (AValue c as (AData n ps)) = Type (Name n) ps -- TODO
+getType (AValue _ _ (AConstruct _ _ d@(AData n []))) = getType d
+getType (AValue c as (AConstruct _ cs (AData n ps))) = Type (Name n) (args cs as ps)
+                                                       where
+                                                           args [] [] ps = ps
+                                                           args (c:cs) (a:as) ps = args cs as (swapType ps c (getType a))
 getType a = error ("Cannot get type of `" ++ pretty a ++ "'")
+
+-- Deep-replace a type with another type (used for replacing polymorphic types)
+swapType :: [Type] -> Type -> Type -> [Type]
+swapType ts t n = swapType' ts [] t n
+                  where
+                      swapType' [] acc _ _ = acc
+                      swapType' (t@(Type a ts'):ts) acc f r = swapType' ts (acc ++ [Type (repl a f r) (swapType ts' f r)]) f r
+                      swapType' (t@(Func a b):ts) acc f r = swapType' ts (acc ++ [Func (repl a f r) (repl b f r)]) f r
+                      swapType' (t:ts) acc f r = swapType' ts (acc ++ [repl t f r]) f r
+                      repl a f r | a == f = r
+                                 | otherwise = a

@@ -5,6 +5,7 @@ import Atomo.Internals
 import Control.Concurrent.Chan
 import Control.Monad.Trans
 import Data.Maybe (fromJust)
+import qualified System.IO.UTF8 as U
 
 -- Boolean
 primBool :: AtomoVal
@@ -17,10 +18,10 @@ primFalseC :: AtomoVal
 primFalseC = AConstruct "False" [] primBool
 
 primTrue :: AtomoVal
-primTrue = AValue "True" [] primBool
+primTrue = AValue "True" [] primTrueC
 
 primFalse :: AtomoVal
-primFalse = AValue "False" [] primBool
+primFalse = AValue "False" [] primFalseC
 
 primNot :: AtomoVal -> AtomoVal
 primNot (AValue "True"  _ _) = primFalse
@@ -42,7 +43,7 @@ primIntC :: AtomoVal
 primIntC = AConstruct "Integer" [Name "a"] primInt
 
 intToPrim :: Integer -> AtomoVal
-intToPrim i = AValue "Integer" [AInt i] primInt
+intToPrim i = AValue "Integer" [AInt i] primIntC
 
 -- Doubles
 isADouble :: AtomoVal -> Bool
@@ -56,7 +57,7 @@ primDoubleC :: AtomoVal
 primDoubleC = AConstruct "Double" [Name "a"] primDouble
 
 doubleToPrim :: Double -> AtomoVal
-doubleToPrim d = AValue "Double" [ADouble d] primDouble
+doubleToPrim d = AValue "Double" [ADouble d] primDoubleC
 
 -- Characters
 isAChar :: AtomoVal -> Bool
@@ -70,7 +71,7 @@ primCharC :: AtomoVal
 primCharC = AConstruct "Char" [Name "a"] primChar
 
 charToPrim :: Char -> AtomoVal
-charToPrim c = AValue "Char" [AChar c] primChar
+charToPrim c = AValue "Char" [AChar c] primCharC
 
 -- Primitive functions
 getPrim :: String -> ([AtomoVal] -> IOThrowsError AtomoVal)
@@ -88,6 +89,7 @@ primDiv a b | isAInt a && isAInt b = intToPrim $ fromAInt a `div` fromAInt b
 
 primFuncs :: [(String, ([String], [AtomoVal] -> IOThrowsError AtomoVal))]
 primFuncs = [ ("++", (["a", "b"], concatFunc))
+            , ("|", (["a", "b"], consFunc))
             , ("==", (["a", "b"], equalityFunc))
             , ("/=", (["a", "b"], inequalityFunc))
             , ("+", (["a", "b"], addFunc)) -- Where "a" is `int` or `double`.
@@ -97,6 +99,7 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
             , ("<", (["a", "b"], lessFunc))
             , ("!", (["a", "b"], sendFunc))
             , ("show", (["a"], showFunc))
+            , ("error", (["a"], errorFunc))
 
             -- IO Primitives
             , ("print", (["a"], printFunc))
@@ -107,12 +110,11 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
                 subFunc [a, b] = return $ primSub a b
                 mulFunc [a, b] = return $ primMul a b
                 divFunc [a, b] = return $ primDiv a b
-                
+
                 concatFunc [a, b] = return $ AList ((fromAList a) ++ (fromAList b))
 
-                equalityFunc [ (AValue a as (AData ad _))
-                             , (AValue b bs (AData bd _))
-                             ] = return $ boolToPrim (a == a && as == bs && ad == bd)
+                consFunc [a, (AList xs)] = return $ AList (a:xs)
+
                 equalityFunc [a, b] = return $ boolToPrim (a == b)
 
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
@@ -124,6 +126,8 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
 
                 showFunc [a] = return $ toAString $ pretty a
 
-                printFunc [x] = liftIO $ (putStrLn . fromAString) x >> return ANone
-                dumpFunc [x] = liftIO $ (putStrLn . pretty) x >> return ANone
+                errorFunc [a] = error (fromAString a)
+
+                printFunc [x] = liftIO $ (U.putStrLn . fromAString) x >> return ANone
+                dumpFunc [x] = liftIO $ (U.putStrLn . pretty) x >> return ANone
 

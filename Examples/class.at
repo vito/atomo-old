@@ -5,9 +5,9 @@ class Person:
 
     new :: Person -> String -> Integer -> String -> Person
     new self n a g:
-        self.name: n
-        self.age: a
-        self.gender: g
+        self.name := n
+        self.age := a
+        self.gender := g
 
         print "Initialized."
         print ("`name' is now: " ++ self.name)

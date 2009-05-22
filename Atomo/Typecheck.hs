@@ -58,15 +58,6 @@ matchTypes e (Type a as) (Type b bs) | consEq && numArgsEq && argsEq = Pass (e, 
                                                                          _ -> False) (zipWith (checkType e) as bs)
 matchTypes e a b = Error $ TypeMismatch a b
 
--- Deep-replace a type with another type (used for replacing polymorphic types)
-swapType :: [Type] -> Type -> Type -> [Type]
-swapType ts t n = swapType' ts [] t n
-                  where
-                      swapType' [] acc _ _ = acc
-                      swapType' (t@(Type a ts'):ts) acc f r = swapType' ts (acc ++ [Type a (swapType ts' f r)]) f r
-                      swapType' (t@(Name _):ts) acc f r | t == f = swapType' ts (acc ++ [r]) f r
-                                                        | otherwise = swapType' ts (acc ++ [t]) f r
-
 -- Ensure that all AtomoVals match a specified type
 allType :: CheckEnv -> Type -> [Type] -> TypeCheck
 allType e t [] = Pass (e, t)
