@@ -8,18 +8,30 @@ import Atomo.Primitive
 
 import Control.Monad
 import Control.Monad.Error
-import Data.List (intercalate, nub, sort)
+import Control.Monad.Identity
+import Data.List (intercalate, nub, sort, sortBy, groupBy)
 import Data.Char (isAlpha, toLower, toUpper, isUpper, isLower, digitToInt)
 import Debug.Trace
 import Text.Parsec hiding (sepBy, sepBy1)
 import Text.Parsec.Expr
-import Text.Parsec.String (Parser)
 import qualified Text.Parsec.Token as P
+
+type Parser = Parsec String [[(String, Assoc)]]
 
 sepBy p sep  = sepBy1 p sep <|> return []
 sepBy1 p sep = do x <- p
                   xs <- many (try (whiteSpace >> sep >> whiteSpace >> p))
                   return (x:xs)
+
+instance Show Assoc where
+    show AssocNone = "AssocNone"
+    show AssocLeft = "AssocLeft"
+    show AssocRight = "AssocRight"
+
+instance Show (Operator s u m a) where
+    show (Infix _ a) = "Infix (...) " ++ show a
+    show (Prefix _) = "Prefix (...)"
+    show (Postfix _) = "Postfix (...)"
 
 -- Custom makeTokenParser with tweaked whiteSpace rules
 makeTokenParser languageDef
@@ -373,7 +385,7 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                         , P.reservedOpNames = ["=", "=>", "->", "::", ":=", "!"]
+                         , P.reservedOpNames = ["=", "=>", "->", "::", ":=", ":"]
                          , P.reservedNames   = ["if", "else", "elseif", "while",
                                                 "do", "class", "data", "type",
                                                 "where", "module", "infix",
@@ -465,6 +477,7 @@ aExpr = aLambda
     <|> aImport
     <|> aAtom
     <|> aReceive
+    <|> aFixity
     <|> try aDefine
     <|> try aBind
     <|> try aAnnot
@@ -503,7 +516,9 @@ aMainExpr = aImport
         <|> aData
         <|> aNewType
         <|> aClass
+        <|> aFixity
         <|> try aDefine
+        <|> try aBind
         <|> try aAnnot
 
 aScriptExpr :: Parser (SourcePos, AtomoVal)
@@ -551,7 +566,28 @@ aReceive = do reserved "receive"
                                       return $ APattern atom code)
               return $ AReceive matches
            <?> "receive"
-    
+
+-- Fixity declaration
+aFixity :: Parser AtomoVal
+aFixity = do decl <- try (symbol "infixl") <|> try (symbol "infixr") <|> symbol "infix"
+             level <- natural
+             colon
+             spacing
+             ops <- commaSep1 operator
+             modifyState (insLevel level (map (\o -> (o, assoc decl)) ops))
+             return ANone
+          where
+              assoc "infix" = AssocNone
+              assoc "infixl" = AssocLeft
+              assoc "infixr" = AssocRight
+
+              insLevel n os t = insLevel' n os t
+
+              insLevel' 9 os (t:ts) = (os ++ t) : ts
+              insLevel' n os (t:ts) = t : insLevel' (n + 1) os ts
+
+              call op a b = callify [a, b] (AVariable op)
+            
 -- Class
 aClass :: Parser AtomoVal
 aClass = do reserved "class"
@@ -590,9 +626,9 @@ aDefAttr :: Parser AtomoVal
 aDefAttr = do object <- aVariable
               dot
               name <- lowIdentifier <|> parens operator
-              args <- many aPattern
-              code <- aBlockOf (try aDefAttr <|> aExpr)
-              return $ ADefAttr object name $ lambdify args code
+              reservedOp ":="
+              val <- aExpr
+              return $ ADefAttr object name $ val
            <?> "data definition"
 
 -- Attribute
@@ -852,38 +888,23 @@ aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
 
 -- Call to predefined primitive function
 aInfix :: Parser AtomoVal
-aInfix = do val <- buildExpressionParser table targets
+aInfix = do st <- getState
+            val <- buildExpressionParser (table st) targets
             return val
          <?> "infix call"
          where
-             table = [ [ any ]
-                     , []
-                     , [ op "*" AssocLeft
-                       , op "/" AssocLeft
-                       ]
-                     , [ op "+" AssocLeft
-                       , op "-" AssocLeft
-                       ]
-                     , [ op "++" AssocRight
-                       , op "|" AssocRight
-                       ]
-                     , [ op "==" AssocNone
-                       , op "/=" AssocNone
-                       , op "<" AssocNone
-                       , op ">" AssocNone
-                       , op "!" AssocNone
-                       ]
-                     ]
-                     where
-                         op s a = Infix ((reservedOp s >> return (call s)) <?> "operator") a
+             table st = (any st : head table') : tail table'
+                        where
+                            table' = map (map (\(o, a) -> Infix (reservedOp o >> return (call o)) a)) st
 
-             any = Infix (try (do op <- operator
-                                  if op `elem` ["++", "<", ":"]
-                                     then fail "Reserved operator"
-                                     else return (call op) <?> "any operator")) AssocLeft
+             any st = Infix (try (do op <- operator
+                                     if op `elem` map fst (concat st)
+                                        then fail "Reserved operator"
+                                        else return (call op) <?> "any operator")) AssocLeft
 
              call op a b = callify [a, b] (AVariable op)
 
+             targets :: Parser AtomoVal
              targets = try aCall
                    <|> try (parens aExpr)
                    <|> try aDouble
@@ -900,10 +921,10 @@ aInfix = do val <- buildExpressionParser table targets
 
 -- Parse a string or throw any errors
 readOrThrow :: Parser a -> String -> ThrowsError a
-readOrThrow p s = case parse (do whiteSpace
-                                 x <- p
-                                 eof
-                                 return x) "" s of
+readOrThrow p s = case runP (do whiteSpace
+                                x <- p
+                                eof
+                                return x) (replicate 10 []) "" s of
                       Left err -> throwError $ Parser err
                       Right val -> return val
 

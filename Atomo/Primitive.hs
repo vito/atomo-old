@@ -97,6 +97,7 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
             , ("*", (["a", "b"], mulFunc)) -- to typeclasses eventually. (TODO)
             , ("/", (["a", "b"], divFunc))
             , ("<", (["a", "b"], lessFunc))
+            , (">", (["a", "b"], greaterFunc))
             , ("!", (["a", "b"], sendFunc))
             , ("show", (["a"], showFunc))
             , ("error", (["a"], errorFunc))
@@ -120,6 +121,7 @@ primFuncs = [ ("++", (["a", "b"], concatFunc))
                 inequalityFunc [a, b] = equalityFunc [a, b] >>= return . primNot
 
                 lessFunc [a, b] = return $ boolToPrim $ (<) (fromAInt a) (fromAInt b)
+                greaterFunc [a, b] = return $ boolToPrim $ (>) (fromAInt a) (fromAInt b)
 
                 sendFunc [(AProcess _ chan), v] = do liftIO (writeChan chan v)
                                                      return ANone

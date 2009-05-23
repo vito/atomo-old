@@ -1,10 +1,10 @@
-fib :: int -> int
+fib :: Integer -> Integer
 fib n:
     if n < 2:
         n
     else:
         fib (n - 2) + fib (n - 1)
 
-main :: void
+main :: ()
 main:
     dump (fib 25)

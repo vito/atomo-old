@@ -264,9 +264,9 @@ getType (AConstruct _ [] d@(AData n ps)) = getType d
 getType (AConstruct _ ts d@(AData n ps)) = foldr Func (getType d) ts
 getType (AData n []) = Name n
 getType (AData n as) = Type (Name n) as
-getType (ALambda _ b _) = undefined -- TODO
+getType (ALambda _ b _) = error "Cannot get type of a lambda." -- TODO
 getType (AReturn r) = getType r
-getType (ADefine _ _) = undefined
+getType (ADefine _ v) = getType v
 getType (AValue _ _ (AConstruct _ _ d@(AData n []))) = getType d
 getType (AValue c as (AConstruct _ cs (AData n ps))) = Type (Name n) (args cs as ps)
                                                        where
