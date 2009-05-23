@@ -798,8 +798,14 @@ aIf = do reserved "if"
          
 -- Variable assignment
 aDefine :: Parser AtomoVal
-aDefine = do name <- lowIdentifier <|> parens operator
-             args <- many aPattern
+aDefine = do (name, args) <- try (do n <- lowIdentifier <|> parens operator
+                                     a <- many aPattern
+                                     lookAhead colon
+                                     return (n, a))
+                         <|> (do a <- aPattern
+                                 n <- operator
+                                 as <- many aPattern
+                                 return (n, a:as))
              code <- aBlock
              others <- many (try (do whiteSpace
                                      symbol name <|> parens (symbol name)

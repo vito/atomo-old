@@ -6,10 +6,10 @@ infixl 5: ++, |
 infixl 4: ==, /=, <, >, !
 
 {- (.) :: (b -> c) -> (a -> b) -> a -> c -}
-(.) f g x: f (g x)
+f . g x: f (g x)
 
 -- Simple alias to ++
-(?) a b: a ++ b
+a ? b: a ++ b
 
 -- Get list element at index
 (!!) [] _: error "Prelude:(!!): Index too large"
@@ -26,6 +26,9 @@ main:
     dump ([1, 2] ++ [2, 3, 4])
     dump ([1, 2, 3] !! 0)
     dump ([1, 2, 3] !! 2)
+
+    (.) print show 9001
+
     dump ([1, 2, 3] !! -2)
     dump ([] !! 100)
 
