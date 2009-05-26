@@ -39,12 +39,12 @@ apply e (ATypeFunc n f) a = do (AInstance _ _ (ABlock fs)) <- getDef e (Instance
                                     Nothing -> throwError $ Unknown $ "Instance does not declare function `" ++ f ++ "'"
                             where
                                 t = getData a
-apply e (AClass _ cs) a = case getAVal cs (Define "new") of
-                               Nothing -> return object
-                               Just v -> do new <- apply e v object
-                                            apply e new a
-                          where
-                              object = AObject cs
+apply e (AClass n _ cs) a = case getAVal cs (Define "new") of
+                                 Nothing -> return object
+                                 Just v -> do new <- apply e v object
+                                              apply e new a
+                            where
+                                object = AObject n cs
 apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (AValue n as c) -> do env <- bind
@@ -99,7 +99,7 @@ eval e (ADefine n v) = case v of
 eval e (ADefAttr n@(AVariable o) a v) = do ev <- eval e n
                                            val <- eval e v
                                            case ev of
-                                                (AObject object) -> mutateVal e (Define o) (AObject (setAVal object (Define a) val))
+                                                (AObject n object) -> mutateVal e (Define o) (AObject n (setAVal object (Define a) val))
                                                 _ -> throwError $ Unknown $ "Variable `" ++ o ++ "' does not refer to an object."
 eval e (ACall t@(AAttribute o n) a) = do obj <- eval e o
                                          fun <- eval e t
@@ -126,15 +126,15 @@ eval e (AImport n ts) = do source <- liftIO $ readModule n
                            return ANone
 eval e (AAttribute t n) = do target <- eval e t
                              case target of
-                                  (AObject cs) -> case getAVal cs (Define n) of
-                                                       Just v -> eval e v
-                                                       Nothing -> throwError $ Unknown $ "Object does not have attribute `" ++ n ++ "'."
+                                  (AObject o cs) -> case getAVal cs (Define n) of
+                                                         Just v -> eval e v
+                                                         Nothing -> throwError $ Unknown $ "Object of class `" ++ prettyType o ++ "' does not have attribute `" ++ n ++ "'."
                                   (AModule as) -> case getAVal as (Define n) of
                                                        Just v -> eval e v
                                                        Nothing -> throwError $ Unknown $ "Module does not have value `" ++ n ++ "'."
-                                  (AClass ss _) -> case getAVal ss (Define n) of
-                                                        Just v -> eval e v
-                                                        Nothing -> throwError $ Unknown $ "Class does not have static method `" ++ n ++ "'."
+                                  (AClass c ss _) -> case getAVal ss (Define n) of
+                                                          Just v -> eval e v
+                                                          Nothing -> throwError $ Unknown $ "Class `" ++ prettyType c ++ "' does not have static method `" ++ n ++ "'."
                                   _ -> do classes <- getClasses e (getType target)
                                           if null classes
                                              then error ("Could not find class `" ++ prettyType (getType target) ++ "'")
@@ -143,9 +143,9 @@ eval e (AAttribute t n) = do target <- eval e t
                                           findMethod clss n
                           where
                               findMethod [] n = throwError $ Unknown $ "Class does not have attribute `" ++ n ++ "'."
-                              findMethod ((AClass _ cs):clss) n = case getAVal cs (Define n) of
-                                                                       Just v -> eval e v
-                                                                       Nothing -> findMethod clss n
+                              findMethod ((AClass _ _ cs):clss) n = case getAVal cs (Define n) of
+                                                                         Just v -> eval e v
+                                                                         Nothing -> findMethod clss n
 eval e (ASpawn c) = do pid <- liftIO $ forkIO (runIOThrows (eval e c) >> return ())
                        chan <- liftIO newChan
                        defineVal e (Process pid) (AProcess pid chan)

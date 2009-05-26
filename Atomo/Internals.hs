@@ -60,8 +60,8 @@ data AtomoVal = AInt Integer
               | AHash [(String, (Type, AtomoVal))]
               | AString AtomoVal -- AString == AList of AChars
               | AVariable String
-              | AClass [AtomoVal] [AtomoVal]
-              | AObject [AtomoVal]
+              | AClass Type [AtomoVal] [AtomoVal]
+              | AObject Type [AtomoVal]
               | AAttribute AtomoVal String
               | ADefine Index AtomoVal
               | ADefAttr AtomoVal String AtomoVal
@@ -170,7 +170,7 @@ pretty (AVariable n)    = "<Variable (" ++ n ++ ")>"
 pretty (ADefine n v)    = "<`" ++ show n ++ "': " ++ pretty v ++ ">"
 pretty (ADefAttr _ _ v) = pretty v
 pretty (AStatic _ v)    = pretty v
-pretty (AObject vs)     = "Object:\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
+pretty (AObject _ vs)   = "Object:\n" ++ (unlines $ map (" - " ++) $ map pretty vs)
 pretty (ACall f a)      = "<Call (`" ++ pretty f ++ "') (`" ++ pretty a ++ "')>"
 pretty s@(AString _)    = show $ fromAString s
 pretty (ABlock es)      = intercalate "\n" $ map pretty es
@@ -184,10 +184,10 @@ pretty v@(ALambda _ _ _) = "\x03BB " ++ intercalate " " (map prettyPattern $ rev
                            where
                                lambdas (ALambda p v _) acc = lambdas v (p : acc)
                                lambdas _ acc = acc
-pretty (AClass ss ms) = "<Class (`" ++ statics ++ "') (`" ++ methods ++ "')>"
-                        where
-                            statics = intercalate "' `" (map (\(AStatic n _) -> n) ss)
-                            methods = intercalate "' `" (map (\(ADefine (Define n) _) -> n) ms)
+pretty (AClass n ss ms) = "<Class `" ++ prettyType n ++ "' (`" ++ statics ++ "') (`" ++ methods ++ "')>"
+                          where
+                              statics = intercalate "' `" (map (\(AStatic n _) -> n) ss)
+                              methods = intercalate "' `" (map (\(ADefine (Define n) _) -> n) ms)
 pretty (AError m)       = m
 pretty (AAtom n)        = "@" ++ n
 pretty (AReceive v)     = "<Receive>"
@@ -228,6 +228,11 @@ prettyType (Func None b) = prettyType b
 prettyType (Func a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
 prettyType (Poly a) = a
 prettyType (None) = "None"
+
+attribute :: AtomoVal -> AtomoVal -> AtomoVal
+attribute f (AVariable n) = AAttribute f n
+attribute f (AAttribute (AVariable a) b) = AAttribute (AAttribute f a) b
+attribute f x = error ("Cannot morph: " ++ show (f, x))
 
 lambdify :: [PatternMatch] -> AtomoVal -> AtomoVal
 lambdify [] b = b
@@ -274,6 +279,7 @@ getType (AValue c as (AConstruct _ cs (AData n ps))) = Type (Name n) (args cs as
                                                        where
                                                            args [] [] ps = ps
                                                            args (c:cs) (a:as) ps = args cs as (swapType ps c (getType a))
+getType (AObject t _) = t
 getType a = error ("Cannot get type of `" ++ pretty a ++ "'")
 
 getData :: AtomoVal -> String

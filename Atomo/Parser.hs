@@ -593,7 +593,7 @@ aClass :: Parser AtomoVal
 aClass = do reserved "class"
             name <- aSimpleType
             code <- aBlockOf (try aStaticAnnot <|> try aAnnot <|> try aStatic <|> try aMethod)
-            return $ ADefine (Class name) $ AClass (static code) (public code)
+            return $ ADefine (Class name) $ AClass name (static code) (public code)
          <?> "class"
 
 -- Static definition
@@ -633,11 +633,14 @@ aDefAttr = do object <- aVariable
 
 -- Attribute
 aAttribute :: Parser AtomoVal
-aAttribute = do target <- target
-                dot
-                attribute <- identifier
-                return $ ACall (AAttribute target attribute) ANone
+aAttribute = do attr <- aAttribute'
+                return $ ACall attr ANone
              where
+                 aAttribute' = do target <- target
+                                  dot
+                                  attr <- try aAttribute' <|> aVariable
+                                  return $ attribute target attr
+
                  target = try (parens aExpr)
                       <|> try aVariable
                       <|> aNumber
@@ -851,8 +854,12 @@ aList = do contents <- brackets $ commaSep aExpr
            return $ AList contents
 
 -- Parse a tuple (immutable list of values of any type)
+-- A tuple must contain 2 or more values.
 aTuple :: Parser AtomoVal
-aTuple = do contents <- parens $ commaSep aExpr
+aTuple = do contents <- parens $ (do a <- aExpr
+                                     symbol ","
+                                     bs <- commaSep1 aExpr
+                                     return (a:bs))
             return $ ATuple contents
 
 -- Parse a hash (mutable, named contents of any type)
@@ -905,7 +912,9 @@ aCall = do name <- try aAttribute <|> aVariable <|> try (parens aExpr)
               <|> try (parens aIf)
               <|> try (parens aInfix)
               <|> try (parens aCall)
+              <|> try (parens aExpr)
               <|> try aVariable
+              <|> aLambda
               <|> aAtom
               <|> aList
               <|> aHash
