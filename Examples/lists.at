@@ -5,7 +5,7 @@ a: Cons 1 (Cons 2 Nil)
 b: [1, 2]
 
 a :: List (List Int)
-c: Cons (Cons 1 (Cons 2 Null)) Nil
+c: Cons (Cons 1 (Cons 2 Nil)) Nil
 d: [[1, 2]]
 
 main:

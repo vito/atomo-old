@@ -1,0 +1,5 @@
+data Cards: King | Queen | Jack | Ace | Num
+
+foo: "bar!"
+another: "fizz!"
+bar: "foo!"

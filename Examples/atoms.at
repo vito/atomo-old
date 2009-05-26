@@ -1,0 +1,6 @@
+main:
+    dump (@foo == @bar)
+    dump (@foo == @foo)
+
+foo:
+    1

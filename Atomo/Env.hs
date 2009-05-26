@@ -51,6 +51,8 @@ getRef e i = do m <- maybeRef e i
                                      (Define n) -> error $ "Could not find definition `" ++ n ++ "'"
                                      (Class t) -> error $ "Could not find class `" ++ prettyType t ++ "'"
                                      (Process t) -> error $ "Could not find process `" ++ show t ++ "'"
+                                     (Typeclass n) -> error $ "Could not find typeclass `" ++ n ++ "'"
+                                     (Instance n t) -> error $ "Typeclass `" ++ n ++ "' does not have instance for `" ++ t ++ "'"
                      Just v -> return v
 
 maybeRef :: Env -> Index -> IOThrowsError (Maybe (IORef AtomoVal))
@@ -61,7 +63,7 @@ maybeRef (s:ss) n = do env <- liftIO $ readIORef s
                             Nothing -> maybeRef ss n
 
 getClasses :: Env -> Type -> IOThrowsError [(Index, IORef AtomoVal)]
-getClasses [] t = return []
+getClasses [] _ = return []
 getClasses (s:ss) t = do env <- liftIO $ readIORef s
                          rest <- getClasses ss t
                          return (findClasses env t [] ++ rest)

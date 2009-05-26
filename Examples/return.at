@@ -1,0 +1,10 @@
+nabs n:
+    if n < 0:
+        return n
+
+    n - (n * 2)
+
+main:
+    print (" ten: " ++ show (nabs 10))
+    print ("-ten: " ++ show (nabs -10))
+    print ("zero: " ++ show (nabs 0))

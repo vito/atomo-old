@@ -1,10 +1,13 @@
-type string: [char]
-data bool: true | false
+type String: [Char]
+data Bool: True | False
 
-(int, char, bool) foos = (1, '2', true)
+menu :: [(String, (String -> ()))] -> ()
+menu m: dump m
 
-void menu([(string, void f(string))] choices):
-    dump(choices)
+main:
+    foos := (1, '2', True)
 
-menu([("Foo", print)])
-dump(foos)
+    menu [("Foo", print)]
+    
+    dump foos
+

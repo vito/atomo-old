@@ -1,0 +1,51 @@
+data Bool: True | False
+data Foo: Bar | Baz
+data Maybe a: Nothing | Just a
+
+typeclass Show a:
+    myShow :: a -> String
+
+instance Show Foo:
+    myShow Bar: "Bar"
+    myShow Baz: "Baz"
+
+instance Show Bool:
+    myShow True: "True"
+    myShow False: "False"
+
+typeclass Monad m:
+    ret :: a -> m a
+    (>>=) :: m a -> (a -> m b) -> m b
+    (>>) :: m a -> m b -> m b
+    fail :: String -> m a
+
+instance Monad Maybe:
+    (Just x) >>= k: k x
+    Nothing >>= k: Nothing
+
+    ret: Just
+    fail s: Nothing
+
+instance Monad []:
+    []     >>= _: []
+    (x|xs) >>= f: f x ++ (xs >>= f)
+
+    ret x: [x]
+    fail _: []
+
+negate x: 0 - x
+
+negateL x: [negate x, x * 5]
+
+negateM x: Just (negate x)
+
+main:
+    print (myShow Bar)
+    print (myShow Baz)
+
+    print (myShow True)
+
+    dump (Just 1 >>= negateM)  -- Just -1
+    dump (Nothing >>= negateM) -- Nothing
+
+    dump ([1, 2, 3] >>= negateL) -- [-1, 5, -2, 10, -3, 15]

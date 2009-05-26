@@ -13,7 +13,9 @@ pong:
     -- from other processes
     receive:
         -- @finished atom; end the loop
-        @finished: print "         | ." -- Missed :(
+        @finished:
+            print "         | ." -- Missed :(
+            print "Volley finished"
 
         -- @ping atom and its process stored in a tuple
         -- Send @pong to @ping and continue waiting for
@@ -24,9 +26,7 @@ pong:
             pong
 
 ping :: Integer -> ()
-ping 0 pid:
-    pid ! @finished -- Send @finished (an atom) to the "pid" process
-    print "Ping finished"
+ping 0 pid: pid ! @finished -- Send @finished (an atom) to the "pid" process
 ping n pid:
     pid ! (@ping, this)
 

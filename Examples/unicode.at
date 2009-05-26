@@ -1,0 +1,9 @@
+-- Here's a ćomment.
+
+fác n:
+    if n == 0:
+        1
+    else:
+        n * fác (n - 1)
+
+main: dump (fác 10)

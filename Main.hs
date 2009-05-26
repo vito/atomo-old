@@ -20,6 +20,7 @@ import Debug.Trace
 import System
 import System.Console.Haskeline
 import System.FilePath.Posix
+import qualified System.IO.UTF8 as U
 
 type Source = String
 
@@ -31,15 +32,19 @@ primIf e c a b = error ("Value is not boolean: " ++ pretty c)
 
 -- Function/Constructor application
 apply :: Env -> AtomoVal -> AtomoVal -> IOThrowsError AtomoVal
+apply e t ANone = eval e t
+apply e (ATypeFunc n f) a = do (AInstance _ _ (ABlock fs)) <- getDef e (Instance n t)
+                               case getAVal fs (Define f) of
+                                    Just f -> apply e f a
+                                    Nothing -> throwError $ Unknown $ "Instance does not declare function `" ++ f ++ "'"
+                            where
+                                t = getData a
 apply e (AClass _ cs) a = case getAVal cs (Define "new") of
                                Nothing -> return object
                                Just v -> do new <- apply e v object
                                             apply e new a
-                                            return object
                           where
                               object = AObject cs
-apply e (AFunction (l:_)) ANone = apply e l ANone
-apply e t ANone = eval e t
 apply e (ALambda p c bs) a = case c of
                                   (ALambda p' c' bs') -> return $ ALambda p' c' $ ((p, a) : (bs ++ bs'))
                                   (AValue n as c) -> do env <- bind
@@ -58,12 +63,17 @@ apply e (ALambda p c bs) a = case c of
                                            let env = new : e
                                            mapM_ (\(p, v) -> pMatch env p v) $ ((p, a) : bs)
                                            return env
-apply e (AFunction ls) a = if null valid
-                              then error $ "Non-exhaustive pattern match in function."
-                              else case (head valid) of
-                                        ALambda _ (ALambda _ _ _) _ -> return $ AFunction bound
-                                        l -> apply e l a
+apply e (AFunction ls) a = case head ls of
+                                ALambda _ _ _ -> notFinal
+                                v -> do dump "Not a lambda" (take 100 (show v))
+                                        dump "Lambdas" ls
+                                        eval e v
                            where
+                               notFinal = if null valid
+                                             then error $ "Non-exhaustive pattern match in function."
+                                             else case (head valid) of
+                                                       ALambda _ (ALambda _ _ _) _ -> return $ AFunction bound
+                                                       l -> apply e l a
                                valid = filter (\(ALambda p _ _) -> pMatches p a) ls
                                bound = map setBound valid
                                setBound (ALambda p (ALambda p' c' bs') bs) = ALambda p' c' ((p, a) : (bs ++ bs'))
@@ -81,9 +91,11 @@ eval e (AList as)     = do list <- mapM (eval e) as
 eval e (AVariable "this") = do tid <- liftIO myThreadId
                                getDef e (Process tid)
 eval e (AVariable n)  = getVal e n >>= eval e
-eval e (ADefine n v@(ALambda _ _ _)) = defineVal e n v
-eval e (ADefine n v@(ABlock _)) = defineVal e n v
-eval e (ADefine n v)  = eval e v >>= defineVal e n
+eval e (ADefine n v) = case v of
+                            ALambda _ _ _ -> defineVal e n v
+                            ABlock _ -> defineVal e n v
+                            AFunction _ -> defineVal e n v
+                            _ -> eval e v >>= defineVal e n
 eval e (ADefAttr n@(AVariable o) a v) = do ev <- eval e n
                                            val <- eval e v
                                            case ev of
@@ -114,12 +126,12 @@ eval e (AImport n ts) = do source <- liftIO $ readModule n
                            return ANone
 eval e (AAttribute t n) = do target <- eval e t
                              case target of
-                                  (AModule as) -> case getAVal as (Define n) of
-                                                       Just v -> eval e v
-                                                       Nothing -> throwError $ Unknown $ "Module does not have value `" ++ n ++ "'."
                                   (AObject cs) -> case getAVal cs (Define n) of
                                                        Just v -> eval e v
                                                        Nothing -> throwError $ Unknown $ "Object does not have attribute `" ++ n ++ "'."
+                                  (AModule as) -> case getAVal as (Define n) of
+                                                       Just v -> eval e v
+                                                       Nothing -> throwError $ Unknown $ "Module does not have value `" ++ n ++ "'."
                                   (AClass ss _) -> case getAVal ss (Define n) of
                                                         Just v -> eval e v
                                                         Nothing -> throwError $ Unknown $ "Class does not have static method `" ++ n ++ "'."
@@ -143,6 +155,13 @@ eval e (AReceive (ABlock ps)) = do id <- liftIO myThreadId
                                    val <- liftIO (readChan chan)
                                    run <- matchExec e ps val
                                    eval e run
+eval e v@(ATypeclass n t (ABlock vs)) = do mapM (\v -> setFunc v) vs
+                                           defineVal e (Typeclass n) v
+                                           return ANone
+                                      where
+                                          setFunc (AAnnot f _) = defineVal e (Define f) (ATypeFunc n f)
+eval e v@(AInstance n t vs) = defineVal e (Instance n t) v
+eval e v@(AFunction (l@(ABlock _):_)) = eval e l
 eval _ v = return v
 
 evalAll :: Env -> [AtomoVal] -> IOThrowsError AtomoVal
@@ -159,7 +178,7 @@ evalString :: Env -> String -> IO AtomoVal
 evalString e s = runIOThrows $ (liftThrows $ readExpr s) >>= eval e
 
 evalAndPrint :: Env -> String -> IO ()
-evalAndPrint e s = evalString e s >>= putStrLn . pretty
+evalAndPrint e s = evalString e s >>= U.putStrLn . pretty
 
 -- Merge source into the environemt (e.g. import from Foo: *)
 merge :: Env -> Source -> IOThrowsError AtomoVal
@@ -243,14 +262,14 @@ modifyFunc (ALambda a v b) f = ALambda a (modifyFunc v f) b
 -- Execute a string
 execute :: Env -> Source -> IO ()
 execute e s = case parsed of -- Catch parse errors
-                   Left err -> putStrLn . prettyError $ err
+                   Left err -> U.putStrLn . prettyError $ err
                    Right v -> do res <- runErrorT (evalAll e (extractValue parsed))
                                  case res of
-                                      Left err -> putStrLn . prettyError $ err -- Runtime error
+                                      Left err -> U.putStrLn . prettyError $ err -- Runtime error
                                       Right _ -> case getAVal v (Define "main") of
                                                       Just f -> do main <- runErrorT $ apply e f ANone
                                                                    case main of
-                                                                        Left err -> putStrLn . prettyError $ err
+                                                                        Left err -> U.putStrLn . prettyError $ err
                                                                         Right _ -> return ()
                                                       Nothing -> putStrLn "Function `main' is not defined."
               where
@@ -274,7 +293,7 @@ dumpAST s = dumpPretty ugly 0
                                                     dumpPretty cs i
                                     | otherwise = do putChar c
                                                      dumpPretty cs i
-                ugly = show (extractValue (readExprs s))
+                ugly = show (map snd (extractValue (readScript s)))
 
 getPath :: IO String
 getPath = do args <- liftIO $ getArgs

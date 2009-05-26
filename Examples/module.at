@@ -1,0 +1,7 @@
+import: Foo.Test
+
+main:
+    dump Test.foo
+    dump Test.King
+    dump Test.bar
+    dump Test.another

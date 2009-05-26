@@ -3,10 +3,10 @@ data Maybe a: Just a | Nothing
 
 class [a]:
     length []: 0
-    length (_:xs): 1 + xs.length
+    length (_|xs): 1 + xs.length
 
 length []: 0
-length (_:xs): 1 + length xs
+length (_|xs): 1 + length xs
 
 and True True: True
 and _ _: False

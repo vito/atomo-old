@@ -14,10 +14,10 @@ debug x = trace (show x) x
 type ThrowsError = Either AtomoError
 type IOThrowsError = ErrorT AtomoError IO
 
-data Index = Define String | Class Type | Process ThreadId
+data Index = Define String | Class Type | Process ThreadId | Typeclass String | Instance String String
              deriving (Eq, Show)
 
-data Type = Name String | Type Type [Type] | Func Type Type | None | Poly Char
+data Type = Name String | Type Type [Type] | Func Type Type | None | Poly String
             deriving (Eq, Show)
 
 match (Func None a) b             = match a b
@@ -63,7 +63,6 @@ data AtomoVal = AInt Integer
               | AClass [AtomoVal] [AtomoVal]
               | AObject [AtomoVal]
               | AAttribute AtomoVal String
-              | AAccessor AtomoVal String
               | ADefine Index AtomoVal
               | ADefAttr AtomoVal String AtomoVal
               | AStatic String AtomoVal
@@ -87,6 +86,9 @@ data AtomoVal = AInt Integer
               | AProcess ThreadId (Chan AtomoVal)
               | APattern PatternMatch AtomoVal
               | AFunction [AtomoVal] -- List of ALambdas to try different patterns
+              | ATypeclass String Type AtomoVal
+              | ATypeFunc String String
+              | AInstance String String AtomoVal
               | ANone
               deriving (Eq, Show)
 
@@ -127,6 +129,7 @@ fromAList (AList l) = l
 fromAList (AString l) = fromAList l
 fromAString (AString s) = map fromAChar (fromAList s)
 fromAString (AList l) = map fromAChar (fromAList (AList l))
+fromAString a = error ("Not a string: `" ++ pretty a ++ "'")
 fromAConstruct (AConstruct s _ _) = s
 fromAAtom (AAtom n) = n
 
@@ -223,7 +226,7 @@ prettyType (Type (Name "()") ts) = "(" ++ intercalate ", " (map prettyType ts) +
 prettyType (Type a ts) = prettyType a ++ " " ++ intercalate " " (map prettyType ts)
 prettyType (Func None b) = prettyType b
 prettyType (Func a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
-prettyType (Poly a) = [a]
+prettyType (Poly a) = a
 prettyType (None) = "None"
 
 lambdify :: [PatternMatch] -> AtomoVal -> AtomoVal
@@ -234,7 +237,6 @@ callify :: [AtomoVal] -> AtomoVal -> AtomoVal
 callify as t = callify' (reverse as) t
                where
                    callify' [] t = ACall t ANone
-                   callify' [a] t = ACall t a
                    callify' (a:as) t = ACall (callify' as t) a
 
 static :: AtomoVal -> [AtomoVal]
@@ -254,7 +256,7 @@ public (ABlock xs) = public' xs
 getType :: AtomoVal -> Type
 getType (AChar _) = Name "char"
 getType (ADouble _) = Name "double"
-getType (AList []) = Type (Name "[]") [Poly 'a']
+getType (AList []) = Type (Name "[]") [Poly "a"]
 getType (AList as) = listOf $ getType (head as)
 getType (ATuple as) = Type (Name "()") $ map getType as
 getType (AHash _) = Name "hash"
@@ -273,6 +275,13 @@ getType (AValue c as (AConstruct _ cs (AData n ps))) = Type (Name n) (args cs as
                                                            args [] [] ps = ps
                                                            args (c:cs) (a:as) ps = args cs as (swapType ps c (getType a))
 getType a = error ("Cannot get type of `" ++ pretty a ++ "'")
+
+getData :: AtomoVal -> String
+getData (AValue _ _ c) = getData c
+getData (AConstruct _ _ (AData n _)) = n
+getData (AData n _) = n
+getData (AList _) = "[]"
+getData v = error ("Cannot get data name for `" ++ pretty v ++ "'")
 
 -- Deep-replace a type with another type (used for replacing polymorphic types)
 swapType :: [Type] -> Type -> Type -> [Type]

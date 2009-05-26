@@ -14,6 +14,8 @@ class Person:
         print ("`age' is now: " ++ show self.age)
         print ("`gender' is now: " ++ self.gender)
 
+        self
+
     eat :: Person -> String -> ()
     eat self food:
         print "Eating..."
@@ -51,5 +53,5 @@ main:
     (Person "Bill" 27 "Male").drink "beer"
     (Person "Billy" 17 "Male").drink "beer"
 
-    Person:static "Hello, world!"
+    Person.static "Hello, world!"
 

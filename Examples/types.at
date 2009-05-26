@@ -1,0 +1,92 @@
+data Foo: Bar | Baz Int
+data List a: Nil | Cons a (List a)
+
+class Foo:
+    new self:
+        dump self
+
+    negate self:
+        if self == Bar:
+            print "Self is Bar"
+            Baz 3
+        else:
+            print "Self is Baz"
+            Bar
+
+class Integer:
+    negate self:
+        0 - self
+
+class List a:
+    id self:
+        print "Returning self."
+        dump self
+        self
+
+class List Integer:
+    id self:
+        print "Returning self from List Integer."
+        dump self
+        self
+
+class [a]:
+    id self:
+        print "Returning a core list."
+        self
+
+    map [] _: []
+    map (x|xs) f: f x | xs.map f
+
+class [Integer]:
+    sum []: 0
+    sum (x|xs): x + xs.sum
+
+class Char:
+    id self:
+        print "Returning a char."
+        self
+
+neg :: Integer -> Integer
+neg x: 0 - x
+
+(&&&) a b: a ++ a ++ b ++ b
+
+main:
+    foo := Bar
+    dump foo
+    dump foo.negate
+
+    bar := 42
+    dump bar.negate
+
+    dump Cons
+
+    list1 := Cons 1 (Cons 2 Nil)
+    list2 := Cons 'a' (Cons 'b' Nil)
+
+    list1.id
+    list2.id
+
+    list3 := [1, 2]
+    list3.id
+
+    dump 'a'.id
+
+    dump ([1, 2].map neg)
+    dump ([1, 2, 3].map ((*) 3))
+
+    dump 'a'.id
+
+    dump (neg 1)
+
+    foo := 1
+
+    foo | [1, 2, 3]
+
+    dump foo
+
+    dump ((neg 1) + 2)
+
+    dump ([1, 2, 3] &&& [3, 4, 5])
+    dump ([1, 2, 3].sum)
+

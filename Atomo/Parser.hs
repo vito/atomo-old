@@ -382,7 +382,7 @@ atomoDef = P.LanguageDef { P.commentStart    = "{-"
                          , P.commentLine     = "--"
                          , P.nestedComments  = True
                          , P.identStart      = letter
-                         , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum)
+                         , P.identLetter     = alphaNum <|> satisfy ((> 0x80) . fromEnum) <|> oneOf "'?"
                          , P.opStart         = letter <|> P.opLetter atomoDef
                          , P.opLetter        = oneOf ":!#$%&*+./<=>?@\\^|-~"
                          , P.reservedOpNames = ["=", "=>", "->", "::", ":=", ":"]
@@ -446,7 +446,7 @@ identifier    = P.identifier atomo
 ident         = do c <- P.identStart atomoDef
                    cs <- many (P.identLetter atomoDef)
                    return (c:cs)
-operator      = P.operator atomo
+operator      = P.operator atomo <|> between (char '`') (char '`') identifier
 reserved      = P.reserved atomo
 reservedOp    = P.reservedOp atomo
 integer       = P.integer atomo
@@ -478,14 +478,13 @@ aExpr = aLambda
     <|> aAtom
     <|> aReceive
     <|> aFixity
-    <|> try aDefine
     <|> try aBind
     <|> try aAnnot
-    <|> try aInfix
     <|> try aSpawn
+    <|> try aDefine
+    <|> try aInfix
     <|> try aCall
     <|> try aAttribute
-    <|> try aAccessor
     <|> try aDouble
     <|> aList
     <|> aHash
@@ -501,7 +500,6 @@ aSimpleExpr = aAtom
           <|> try aInfix
           <|> try aCall
           <|> try aAttribute
-          <|> try aAccessor
           <|> try aDouble
           <|> aList
           <|> aHash
@@ -516,6 +514,8 @@ aMainExpr = aImport
         <|> aData
         <|> aNewType
         <|> aClass
+        <|> aTypeclass
+        <|> aInstance
         <|> aFixity
         <|> try aDefine
         <|> try aBind
@@ -647,27 +647,43 @@ aAttribute = do target <- target
                       <|> aHash
                       <|> aTuple
 
--- Module accessing or static call (e.g. Foo:bar)
-aAccessor :: Parser AtomoVal
-aAccessor = do target <- aVariable
-               colon
-               attribute <- aReference
-               return $ AAccessor target attribute
+-- Typeclass
+aTypeclass :: Parser AtomoVal
+aTypeclass = do reserved "typeclass"
+                name <- capIdentifier
+                var <- lowIdentifier
+                code <- aBlockOf (aFixity <|> try aAnnot <|> try aDefine)
+                return $ ATypeclass name (Poly var) code
+
+-- Typeclass instance
+aInstance :: Parser AtomoVal
+aInstance = do reserved "instance"
+               name <- capIdentifier
+               inst <- capIdentifier <|> (brackets spacing >> return "[]")
+               code <- aBlockOf (try aAnnot <|> try aDefine)
+               return $ AInstance name inst code
 
 -- Type, excluding functions
 aSimpleType :: Parser Type
-aSimpleType = try (do con <- capIdentifier
-                      args <- aType `sepBy1` spacing1
-                      return $ Type (Name con) args)
-          <|> try (do theTypes <- parens (commaSep aType)
-                      return $ Type (Name "()") theTypes)
-          <|> try (do theType <- brackets aType
-                      return $ Type (Name "[]") [theType])
-          <|> (capIdentifier >>= return . Name)
-          <|> (lexeme (satisfy isLower) >>= return . Poly)
-          <|> try (parens aSimpleType)
-          <|> try (parens aType)
+aSimpleType = try (do con <- (capIdentifier >>= return . Name)
+                         <|> (lowIdentifier >>= return . Poly)
+                      args <- aSubType `sepBy1` spacing1
+                      return $ Type con args)
+          <|> aSubType
           <?> "type"
+
+aSubType = try (do con <- (capIdentifier >>= return . Name)
+                   args <- aSubType `sepBy1` spacing1
+                   return $ Type con args)
+       <|> try (do theType <- brackets aType
+                   return $ Type (Name "[]") [theType])
+       <|> try (parens aSimpleType)
+       <|> try (parens aType)
+       <|> try (do theTypes <- parens (commaSep aType)
+                   return $ Type (Name "()") theTypes)
+       <|> (capIdentifier >>= return . Name)
+       <|> (lowIdentifier >>= return . Poly)
+       <?> "type"
 
 -- Type
 aType :: Parser Type
@@ -683,7 +699,7 @@ aStaticAnnot = do string "self"
 
 -- Type header
 aAnnot :: Parser AtomoVal
-aAnnot = do name <- identifier <|> operator
+aAnnot = do name <- identifier <|> parens operator
             symbol "::"
             types <- aType
             return $ AAnnot name types
@@ -769,7 +785,7 @@ aBlockOf p = do colon
 -- Data constructor
 aConstructor :: Parser (AtomoVal -> AtomoVal)
 aConstructor = do name <- capIdentifier
-                  params <- many aSimpleType
+                  params <- many aSubType
                   return $ AConstruct name params
 
 -- New data declaration
@@ -808,10 +824,16 @@ aDefine = do (name, args) <- try (do n <- lowIdentifier <|> parens operator
                                  return (n, a:as))
              code <- aBlock
              others <- many (try (do whiteSpace
-                                     symbol name <|> parens (symbol name)
-                                     args <- many aPattern
+                                     reserved name <|> parens (reserved name)
+                                     args <- many1 aPattern
                                      code <- aBlock
-                                     return $ lambdify args code))
+                                     return $ lambdify args code)
+                         <|> try (do whiteSpace
+                                     a <- aPattern
+                                     reserved name
+                                     as <- many1 aPattern
+                                     code <- aBlock
+                                     return $ lambdify (a:as) code))
              return $ ADefine (Define name) (AFunction $ (lambdify args code : others))
           <?> "function definition"
 
