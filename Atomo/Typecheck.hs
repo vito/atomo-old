@@ -5,6 +5,7 @@ import Atomo.Internals
 import Atomo.Primitive (primFuncs)
 
 import Control.Monad.Error
+import Debug.Trace
 import Text.Parsec.Pos (SourcePos, newPos)
 
 type CheckEnv = [[(Index, Type)]]
@@ -78,9 +79,7 @@ verifyHash e ((_, (t, v)):vs) = either id (\r -> case checkType e r t of
                                                       a -> a) $ exprType e v
 
 checkAST :: ThrowsError [(SourcePos, AtomoVal)] -> ThrowsError [AtomoVal]
-checkAST (Right a) = checkExprs env a (map snd a)
-                     where
-                        env = []
+checkAST (Right a) = checkExprs [[]] a (map snd a)
 checkAST (Left err) = throwError err
 
 checkExprs :: CheckEnv -> [(SourcePos, AtomoVal)] -> [AtomoVal] -> ThrowsError [AtomoVal]
@@ -96,7 +95,7 @@ exprType e v = case checkExpr e v of
                     a -> Left a
 
 checkExpr :: CheckEnv -> AtomoVal -> TypeCheck
-{- checkExpr e (AList as) = verifyList e as -}
+checkExpr e (AList as) = verifyList e as
 checkExpr e (ATuple as) = either id (\ts -> Pass (e, Type (Name "()") ts)) $ checkTypes e as []
 checkExpr e (AHash as) = verifyHash e as
 checkExpr e (ADefine n v) = either id (\r -> Pass (newEnv r, r)) $ exprType e v
@@ -112,7 +111,14 @@ checkExpr e (AVariable n) = case getAnyType e (Define n) of
 checkExpr e (AString as) = Pass (e, Type (Name "[]") [Name "Char"])
 checkExpr e (AType n t) = Pass ((((Define n), t) : head e) : tail e, t)
 checkExpr e (AAnnot n t) = Pass ((((Define n), t) : head e) : tail e, t)
-checkExpr e v = Pass (e, Name (show v)) -- TODO: This is for debugging.
+checkExpr e (AFunction ls) = checkAll e ls
+checkExpr e (ACall t a) = checkExpr e a >>* checkExpr e t
+                          where
+                              (Pass (_, r)) = checkExpr e t
+checkExpr e (AValue n as c) = Pass (e, getType (AValue n as c))
+checkExpr e (AClass _ ms ss) = checkAll e ms >>* checkAll e ss
+checkExpr e (ANone) = Pass (e, None)
+checkExpr e v = error $ "Don't know how to check this expression: " ++ show v
 
 -- Check all expressions and return the return type.
 checkAll :: CheckEnv -> [AtomoVal] -> TypeCheck

@@ -17,9 +17,15 @@ type IOThrowsError = ErrorT AtomoError IO
 data Index = Define String | Class Type | Process ThreadId | Typeclass String | Instance String String
              deriving (Eq, Show)
 
-data Type = Name String | Type Type [Type] | Func Type Type | None | Poly String
+data Type = Name String
+          | Type Type [Type]
+          | Func Type Type
+          | None
+          | Poly String
+          | Member [(String, Type)] Type -- (Show a) => a -> String as `Member [("Show", Poly "a")] (Func (Poly "a") (Func None (Name "String")))
             deriving (Eq, Show)
 
+match :: Type -> Type -> Bool
 match (Func None a) b             = match a b
 match a             (Func None b) = match a b
 match (Name a)      (Name b)      = a == b
